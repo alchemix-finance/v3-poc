@@ -105,14 +105,6 @@ interface IAlchemistV3AdminActions {
     /// @param flag     A flag indicating of the address should be set or unset as a sentinel.
     function setSentinel(address sentinel, bool flag) external;
 
-    /// @notice Sets an address as a keeper.
-    ///
-    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
-    ///
-    /// @param keeper The address to set or unset as a keeper.
-    /// @param flag   A flag indicating of the address should be set or unset as a keeper.
-    function setKeeper(address keeper, bool flag) external;
-
     /// @notice Adds an underlying token to the system.
     ///
     /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
@@ -284,12 +276,4 @@ interface IAlchemistV3AdminActions {
     ///
     /// @param transferAdapterAddress The address of the V1 transfer adapter to be set in the alchemist.
     function setTransferAdapterAddress(address transferAdapterAddress) external;
-
-    /// @notice Accept debt from the V1 transfer vault adapter.
-    ///
-    /// @notice `msg.sender` must be a sentinal or the admin or this call will revert with an {Unauthorized} error.
-    ///
-    /// @param owner    The owner of the account whos debt to increase.
-    /// @param debt     The amount of debt incoming from the V1 tranfer adapter.
-    function transferDebtV1(address owner, int256 debt) external;
 }

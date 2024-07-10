@@ -80,13 +80,6 @@ interface IAlchemistV3State {
     /// @return isSentinel If the address is a sentinel.
     function sentinels(address sentinel) external view returns (bool isSentinel);
 
-    /// @notice Gets if an address is a keeper.
-    ///
-    /// @param keeper The address to check.
-    ///
-    /// @return isKeeper If the address is a keeper
-    function keepers(address keeper) external view returns (bool isKeeper);
-
     /// @notice Gets the address of the transmuter.
     ///
     /// @return transmuter The transmuter address.
@@ -228,6 +221,44 @@ interface IAlchemistV3State {
     /// @return depositedCollateral total deposit from owner
     /// @return debt current debt of owner
     function getCDP(address owner) external view returns (uint256 depositedCollateral, int256 debt);
+
+    /// @notice Returns relevant data about the yield token in one call to avoid dependency chains in the api
+    ///
+    /// @return yieldTokenAddress YieldTokenAddress
+    /// @return underlyingTokenAddress UnderlyingTokenAddress
+    /// @return yieldTokenTicker YieldTokenTicker
+    /// @return underlyingTokenTicker UnderlyingTokenTicker
+    function getYieldToken()
+        external
+        view
+        returns (uint256 yieldTokenAddress, uint256 underlyingTokenAddress, uint256 yieldTokenTicker, uint256 underlyingTokenTicker);
+
+    /// @notice Returns relevant data about the yield token in one call to avoid dependency chains in the api
+    ///
+    /// @return LTV LTV
+    /// @return underlyingTokenAddress UnderlyingTokenAddress
+    /// @return redemptionFee RedemptionFee
+    function getLoanTerms() external view returns (uint8 LTV, uint8 underlyingTokenAddress, uint8 redemptionFee);
+
+    /// @notice Returns the total amount of yield tokens deposited in the alchemist
+    ///
+    /// @return deposits Total Deposits
+    function getTotalDepositedValue() external view returns (uint256 deposits);
+
+    /// @notice Read the total value of the TVL in the alchemist, denominated in the underlying token.
+    ///
+    /// @return TVL TVL in the alchemist, denominated in the underlying token.
+    function getTotalUnderlyingValue() external view returns (uint256 TVL);
+
+    /// @notice Returns the total amount of borrowed assets from the alchemist.
+    ///
+    /// @return debt The total amount of borrowed assets from the alchemist
+    function getTotalBorrowed() external view returns (uint256 debt);
+
+    /// @notice Returns the maximum a user can borrow at any moment. Improves frontend UX becuase if user selects “MAX” deposit, then it will use the
+    ///
+    /// @return mexDebt The maximum a user can borrow at any moment.
+    function getMaxBorrowable() external view returns (uint256 mexDebt);
 
     /// @notice Gets current limit, maximum, and rate of the liquidation limiter for `underlyingToken`.
     ///

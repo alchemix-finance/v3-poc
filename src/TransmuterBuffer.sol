@@ -325,7 +325,7 @@ contract TransmuterBuffer is ITransmuterBuffer, AccessControl, Initializable {
 
     /// @inheritdoc ITransmuterBuffer
     function withdrawFromAlchemist(address yieldToken, uint256 shares, uint256 minimumAmountOut) external override onlyKeeper {
-        IAlchemistV3(alchemist).withdrawUnderlying(yieldToken, shares, address(this), minimumAmountOut);
+        /// TODO Withdraw yield
     }
 
     /// @inheritdoc ITransmuterBuffer
@@ -433,7 +433,7 @@ contract TransmuterBuffer is ITransmuterBuffer, AccessControl, Initializable {
     /// @param token    The target yield-token.
     /// @param amount      The amount of debt-tokens to burn.
     function _alchemistDonate(address token, uint256 amount) internal {
-        IAlchemistV3(alchemist).donate(token, amount);
+        /// TODO Remove - Seems depracated
     }
 
     /// @notice Deposits funds into the Alchemist.
@@ -441,7 +441,7 @@ contract TransmuterBuffer is ITransmuterBuffer, AccessControl, Initializable {
     /// @param token  The yield-token to deposit.
     /// @param amount The amount to deposit.
     function _alchemistDeposit(address token, uint256 amount) internal {
-        IAlchemistV3(alchemist).depositUnderlying(token, amount, address(this), 0);
+        /// TODO Remove - Seems depracated
     }
 
     /// @notice Withdraws funds from the Alchemist.
@@ -449,18 +449,7 @@ contract TransmuterBuffer is ITransmuterBuffer, AccessControl, Initializable {
     /// @param token            The yield-token to withdraw.
     /// @param amountUnderlying The amount of underlying to withdraw.
     function _alchemistWithdraw(address token, uint256 amountUnderlying) internal {
-        uint8 decimals = TokenUtils.expectDecimals(token);
-        uint256 pricePerShare = IAlchemistV3(alchemist).getUnderlyingTokensPerShare(token);
-        uint256 wantShares = amountUnderlying * 10 ** decimals / pricePerShare;
-        (uint256 availableShares,) = IAlchemistV3(alchemist).positions(address(this), token);
-        if (wantShares > availableShares) {
-            wantShares = availableShares;
-        }
-        // Allow 1% slippage
-        uint256 minimumAmountOut = amountUnderlying - amountUnderlying * 100 / BPS;
-        if (wantShares > 0) {
-            IAlchemistV3(alchemist).withdrawUnderlying(token, wantShares, address(this), minimumAmountOut);
-        }
+        // TODO Withdraw yield
     }
 
     /// @notice Pull necessary funds from the Alchemist and exchange them.
