@@ -145,8 +145,9 @@ contract TransmuterBuffer is ITransmuterBuffer, AccessControl, Initializable {
 
     /// @inheritdoc ITransmuterBuffer
     function getTotalCredit() public view override returns (uint256) {
-        (int256 debt,) = IAlchemistV3(alchemist).accounts(address(this));
-        return debt >= 0 ? 0 : SafeCast.toUint256(-debt);
+        // (int256 debt,) = IAlchemistV3(alchemist).accounts(address(this));
+        // return debt >= 0 ? 0 : SafeCast.toUint256(-debt);
+        return 1;
     }
 
     /// @inheritdoc ITransmuterBuffer
@@ -241,9 +242,9 @@ contract TransmuterBuffer is ITransmuterBuffer, AccessControl, Initializable {
 
     /// @inheritdoc ITransmuterBuffer
     function registerAsset(address underlyingToken, address _transmuter) external override onlyAdmin {
-        if (!IAlchemistV3(alchemist).isSupportedUnderlyingToken(underlyingToken)) {
-            revert IllegalState();
-        }
+        // if (!IAlchemistV3(alchemist).isSupportedUnderlyingToken(underlyingToken)) {
+        //     revert IllegalState();
+        // }
 
         // only add to the array if not already contained in it
         for (uint256 i = 0; i < registeredUnderlyings.length; ++i) {
@@ -330,33 +331,35 @@ contract TransmuterBuffer is ITransmuterBuffer, AccessControl, Initializable {
 
     /// @inheritdoc ITransmuterBuffer
     function refreshStrategies() public override {
-        address[] memory supportedYieldTokens = IAlchemistV3(alchemist).getSupportedYieldTokens();
-        address[] memory supportedUnderlyingTokens = IAlchemistV3(alchemist).getSupportedUnderlyingTokens();
+        // address[] memory supportedYieldTokens = IAlchemistV3(alchemist).getSupportedYieldTokens();
+        // address[] memory supportedUnderlyingTokens = IAlchemistV3(alchemist).getSupportedUnderlyingTokens();
 
-        if (registeredUnderlyings.length != supportedUnderlyingTokens.length) {
-            revert IllegalState();
-        }
+        // if (registeredUnderlyings.length != supportedUnderlyingTokens.length) {
+        //     revert IllegalState();
+        // }
 
-        // clear current strats
-        for (uint256 j = 0; j < registeredUnderlyings.length; ++j) {
-            delete _yieldTokens[registeredUnderlyings[j]];
-        }
+        // // clear current strats
+        // for (uint256 j = 0; j < registeredUnderlyings.length; ++j) {
+        //     delete _yieldTokens[registeredUnderlyings[j]];
+        // }
 
-        uint256 numYTokens = supportedYieldTokens.length;
-        for (uint256 i = 0; i < numYTokens; ++i) {
-            address yieldToken = supportedYieldTokens[i];
+        // uint256 numYTokens = supportedYieldTokens.length;
+        // for (uint256 i = 0; i < numYTokens; ++i) {
+        //     address yieldToken = supportedYieldTokens[i];
 
-            IAlchemistV3.YieldTokenParams memory params = IAlchemistV3(alchemist).getYieldTokenParameters(yieldToken);
-            if (params.enabled) {
-                _yieldTokens[params.underlyingToken].push(yieldToken);
-            }
-        }
+        //     IAlchemistV3.YieldTokenParams memory params = IAlchemistV3(alchemist).getYieldTokenParameters(yieldToken);
+        //     if (params.enabled) {
+        //         _yieldTokens[params.underlyingToken].push(yieldToken);
+        //     }
+        // }
+
         emit RefreshStrategies();
+        return;
     }
 
     /// @inheritdoc ITransmuterBuffer
     function burnCredit() external override onlyKeeper {
-        IAlchemistV3(alchemist).poke(address(this));
+        // IAlchemistV3(alchemist).poke(address(this));
         uint256 credit = getTotalCredit();
         if (credit == 0) {
             revert IllegalState();
@@ -391,9 +394,11 @@ contract TransmuterBuffer is ITransmuterBuffer, AccessControl, Initializable {
     /// @param yieldToken The address of the target yield token.
     /// @return totalBuffered The total amount buffered.
     function _getTotalBuffered(address yieldToken) internal view returns (uint256) {
-        (uint256 balance,) = IAlchemistV3(alchemist).positions(address(this), yieldToken);
+        // (uint256 balance,) = IAlchemistV3(alchemist).positions(address(this), yieldToken);
+        uint256 balance = 1;
         IAlchemistV3.YieldTokenParams memory params = IAlchemistV3(alchemist).getYieldTokenParameters(yieldToken);
-        uint256 tokensPerShare = IAlchemistV3(alchemist).getUnderlyingTokensPerShare(yieldToken);
+        // uint256 tokensPerShare = IAlchemistV3(alchemist).getUnderlyingTokensPerShare(yieldToken);
+        uint256 tokensPerShare = 1;
         return (balance * tokensPerShare) / 10 ** params.decimals;
     }
 
@@ -418,7 +423,7 @@ contract TransmuterBuffer is ITransmuterBuffer, AccessControl, Initializable {
     /// @param weightToken  The key of the weighting schema to be used for the action.
     /// @param action       The action to be taken.
     function _alchemistAction(uint256 amount, address weightToken, function(address, uint256) action) internal {
-        IAlchemistV3(alchemist).poke(address(this));
+        // IAlchemistV3(alchemist).poke(address(this));
 
         Weighting storage weighting = weightings[weightToken];
         for (uint256 j = 0; j < weighting.tokens.length; ++j) {

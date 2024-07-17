@@ -13,4 +13,9 @@ interface IAlchemistV3Immutables {
     ///
     /// @return The address of the debt token.
     function debtToken() external view returns (address);
+
+    /// @notice Returns the address of the yield token used by the system.
+    ///
+    /// @return The address of the yield token.
+    function yieldToken() external view returns (address);
 }

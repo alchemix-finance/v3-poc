@@ -109,64 +109,64 @@ interface IAlchemistV3State {
     /// @return whitelist The address of the whitelist contract.
     function whitelist() external view returns (address whitelist);
 
-    /// @notice Gets the conversion rate of underlying tokens per share.
-    ///
-    /// @param yieldToken The address of the yield token to get the conversion rate for.
-    ///
-    /// @return rate The rate of underlying tokens per share.
-    function getUnderlyingTokensPerShare(address yieldToken) external view returns (uint256 rate);
+    // /// @notice Gets the conversion rate of underlying tokens per share.
+    // ///
+    // /// @param yieldToken The address of the yield token to get the conversion rate for.
+    // ///
+    // /// @return rate The rate of underlying tokens per share.
+    // function getUnderlyingTokensPerShare(address yieldToken) external view returns (uint256 rate);
 
-    /// @notice Gets the conversion rate of yield tokens per share.
-    ///
-    /// @param yieldToken The address of the yield token to get the conversion rate for.
-    ///
-    /// @return rate The rate of yield tokens per share.
-    function getYieldTokensPerShare(address yieldToken) external view returns (uint256 rate);
+    // /// @notice Gets the conversion rate of yield tokens per share.
+    // ///
+    // /// @param yieldToken The address of the yield token to get the conversion rate for.
+    // ///
+    // /// @return rate The rate of yield tokens per share.
+    // function getYieldTokensPerShare(address yieldToken) external view returns (uint256 rate);
 
-    /// @notice Gets the supported underlying tokens.
-    ///
-    /// @dev The order of the entries returned by this function is not guaranteed to be consistent between calls.
-    ///
-    /// @return tokens The supported underlying tokens.
-    function getSupportedUnderlyingTokens() external view returns (address[] memory tokens);
+    // /// @notice Gets the supported underlying tokens.
+    // ///
+    // /// @dev The order of the entries returned by this function is not guaranteed to be consistent between calls.
+    // ///
+    // /// @return tokens The supported underlying tokens.
+    // function getSupportedUnderlyingTokens() external view returns (address[] memory tokens);
 
-    /// @notice Gets the supported yield tokens.
-    ///
-    /// @dev The order of the entries returned by this function is not guaranteed to be consistent between calls.
-    ///
-    /// @return tokens The supported yield tokens.
-    function getSupportedYieldTokens() external view returns (address[] memory tokens);
+    // /// @notice Gets the supported yield tokens.
+    // ///
+    // /// @dev The order of the entries returned by this function is not guaranteed to be consistent between calls.
+    // ///
+    // /// @return tokens The supported yield tokens.
+    // function getSupportedYieldTokens() external view returns (address[] memory tokens);
 
-    /// @notice Gets if an underlying token is supported.
-    ///
-    /// @param underlyingToken The address of the underlying token to check.
-    ///
-    /// @return isSupported If the underlying token is supported.
-    function isSupportedUnderlyingToken(address underlyingToken) external view returns (bool isSupported);
+    // /// @notice Gets if an underlying token is supported.
+    // ///
+    // /// @param underlyingToken The address of the underlying token to check.
+    // ///
+    // /// @return isSupported If the underlying token is supported.
+    // function isSupportedUnderlyingToken(address underlyingToken) external view returns (bool isSupported);
 
-    /// @notice Gets if a yield token is supported.
-    ///
-    /// @param yieldToken The address of the yield token to check.
-    ///
-    /// @return isSupported If the yield token is supported.
-    function isSupportedYieldToken(address yieldToken) external view returns (bool isSupported);
+    // /// @notice Gets if a yield token is supported.
+    // ///
+    // /// @param yieldToken The address of the yield token to check.
+    // ///
+    // /// @return isSupported If the yield token is supported.
+    // function isSupportedYieldToken(address yieldToken) external view returns (bool isSupported);
 
-    /// @notice Gets information about the account owned by `owner`.
-    ///
-    /// @param owner The address that owns the account.
-    ///
-    /// @return debt            The unrealized amount of debt that the account had incurred.
-    /// @return depositedTokens The yield tokens that the owner has deposited.
-    function accounts(address owner) external view returns (int256 debt, address[] memory depositedTokens);
+    // /// @notice Gets information about the account owned by `owner`.
+    // ///
+    // /// @param owner The address that owns the account.
+    // ///
+    // /// @return debt            The unrealized amount of debt that the account had incurred.
+    // /// @return depositedTokens The yield tokens that the owner has deposited.
+    // function accounts(address owner) external view returns (int256 debt, address[] memory depositedTokens);
 
-    /// @notice Gets information about a yield token position for the account owned by `owner`.
-    ///
-    /// @param owner      The address that owns the account.
-    /// @param yieldToken The address of the yield token to get the position of.
-    ///
-    /// @return shares            The amount of shares of that `owner` owns of the yield token.
-    /// @return lastAccruedWeight The last recorded accrued weight of the yield token.
-    function positions(address owner, address yieldToken) external view returns (uint256 shares, uint256 lastAccruedWeight);
+    // /// @notice Gets information about a yield token position for the account owned by `owner`.
+    // ///
+    // /// @param owner      The address that owns the account.
+    // /// @param yieldToken The address of the yield token to get the position of.
+    // ///
+    // /// @return shares            The amount of shares of that `owner` owns of the yield token.
+    // /// @return lastAccruedWeight The last recorded accrued weight of the yield token.
+    // function positions(address owner, address yieldToken) external view returns (uint256 shares, uint256 lastAccruedWeight);
 
     /// @notice Gets the amount of debt tokens `spender` is allowed to mint on behalf of `owner`.
     ///

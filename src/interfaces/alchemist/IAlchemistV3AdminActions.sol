@@ -12,6 +12,8 @@ interface IAlchemistV3AdminActions {
         address admin;
         // The ERC20 token used to represent debt.
         address debtToken;
+        // The address of the whitelist.
+        address yieldToken;
         // The initial transmuter or transmuter buffer.
         address transmuter;
         // The minimum collateralization ratio that an account must maintain.
@@ -105,71 +107,71 @@ interface IAlchemistV3AdminActions {
     /// @param flag     A flag indicating of the address should be set or unset as a sentinel.
     function setSentinel(address sentinel, bool flag) external;
 
-    /// @notice Adds an underlying token to the system.
-    ///
-    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
-    ///
-    /// @param underlyingToken The address of the underlying token to add.
-    /// @param config          The initial underlying token configuration.
-    function addUnderlyingToken(address underlyingToken, UnderlyingTokenConfig calldata config) external;
+    // /// @notice Adds an underlying token to the system.
+    // ///
+    // /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    // ///
+    // /// @param underlyingToken The address of the underlying token to add.
+    // /// @param config          The initial underlying token configuration.
+    // function addUnderlyingToken(address underlyingToken, UnderlyingTokenConfig calldata config) external;
 
-    /// @notice Adds a yield token to the system.
-    ///
-    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
-    ///
-    /// @notice Emits a {AddYieldToken} event.
-    /// @notice Emits a {TokenAdapterUpdated} event.
-    /// @notice Emits a {MaximumLossUpdated} event.
-    ///
-    /// @param yieldToken The address of the yield token to add.
-    /// @param config     The initial yield token configuration.
-    function addYieldToken(address yieldToken, YieldTokenConfig calldata config) external;
+    // /// @notice Adds a yield token to the system.
+    // ///
+    // /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    // ///
+    // /// @notice Emits a {AddYieldToken} event.
+    // /// @notice Emits a {TokenAdapterUpdated} event.
+    // /// @notice Emits a {MaximumLossUpdated} event.
+    // ///
+    // /// @param yieldToken The address of the yield token to add.
+    // /// @param config     The initial yield token configuration.
+    // function addYieldToken(address yieldToken, YieldTokenConfig calldata config) external;
 
-    /// @notice Sets an underlying token as either enabled or disabled.
-    ///
-    /// @notice `msg.sender` must be either the admin or a sentinel or this call will revert with an {Unauthorized} error.
-    /// @notice `underlyingToken` must be registered or this call will revert with a {UnsupportedToken} error.
-    ///
-    /// @notice Emits an {UnderlyingTokenEnabled} event.
-    ///
-    /// @param underlyingToken The address of the underlying token to enable or disable.
-    /// @param enabled         If the underlying token should be enabled or disabled.
-    function setUnderlyingTokenEnabled(address underlyingToken, bool enabled) external;
+    // /// @notice Sets an underlying token as either enabled or disabled.
+    // ///
+    // /// @notice `msg.sender` must be either the admin or a sentinel or this call will revert with an {Unauthorized} error.
+    // /// @notice `underlyingToken` must be registered or this call will revert with a {UnsupportedToken} error.
+    // ///
+    // /// @notice Emits an {UnderlyingTokenEnabled} event.
+    // ///
+    // /// @param underlyingToken The address of the underlying token to enable or disable.
+    // /// @param enabled         If the underlying token should be enabled or disabled.
+    // function setUnderlyingTokenEnabled(address underlyingToken, bool enabled) external;
 
-    /// @notice Sets a yield token as either enabled or disabled.
-    ///
-    /// @notice `msg.sender` must be either the admin or a sentinel or this call will revert with an {Unauthorized} error.
-    /// @notice `yieldToken` must be registered or this call will revert with a {UnsupportedToken} error.
-    ///
-    /// @notice Emits a {YieldTokenEnabled} event.
-    ///
-    /// @param yieldToken The address of the yield token to enable or disable.
-    /// @param enabled    If the underlying token should be enabled or disabled.
-    function setYieldTokenEnabled(address yieldToken, bool enabled) external;
+    // /// @notice Sets a yield token as either enabled or disabled.
+    // ///
+    // /// @notice `msg.sender` must be either the admin or a sentinel or this call will revert with an {Unauthorized} error.
+    // /// @notice `yieldToken` must be registered or this call will revert with a {UnsupportedToken} error.
+    // ///
+    // /// @notice Emits a {YieldTokenEnabled} event.
+    // ///
+    // /// @param yieldToken The address of the yield token to enable or disable.
+    // /// @param enabled    If the underlying token should be enabled or disabled.
+    // function setYieldTokenEnabled(address yieldToken, bool enabled) external;
 
-    /// @notice Configures the the repay limit of `underlyingToken`.
-    ///
-    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
-    /// @notice `underlyingToken` must be registered or this call will revert with a {UnsupportedToken} error.
-    ///
-    /// @notice Emits a {ReplayLimitUpdated} event.
-    ///
-    /// @param underlyingToken The address of the underlying token to configure the repay limit of.
-    /// @param maximum         The maximum repay limit.
-    /// @param blocks          The number of blocks it will take for the maximum repayment limit to be replenished when it is completely exhausted.
-    function configureRepayLimit(address underlyingToken, uint256 maximum, uint256 blocks) external;
+    // /// @notice Configures the the repay limit of `underlyingToken`.
+    // ///
+    // /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    // /// @notice `underlyingToken` must be registered or this call will revert with a {UnsupportedToken} error.
+    // ///
+    // /// @notice Emits a {ReplayLimitUpdated} event.
+    // ///
+    // /// @param underlyingToken The address of the underlying token to configure the repay limit of.
+    // /// @param maximum         The maximum repay limit.
+    // /// @param blocks          The number of blocks it will take for the maximum repayment limit to be replenished when it is completely exhausted.
+    // function configureRepayLimit(address underlyingToken, uint256 maximum, uint256 blocks) external;
 
-    /// @notice Configure the liquidation limiter of `underlyingToken`.
-    ///
-    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
-    /// @notice `underlyingToken` must be registered or this call will revert with a {UnsupportedToken} error.
-    ///
-    /// @notice Emits a {LiquidationLimitUpdated} event.
-    ///
-    /// @param underlyingToken The address of the underlying token to configure the liquidation limit of.
-    /// @param maximum         The maximum liquidation limit.
-    /// @param blocks          The number of blocks it will take for the maximum liquidation limit to be replenished when it is completely exhausted.
-    function configureLiquidationLimit(address underlyingToken, uint256 maximum, uint256 blocks) external;
+    // /// @notice Configure the liquidation limiter of `underlyingToken`.
+    // ///
+    // /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    // /// @notice `underlyingToken` must be registered or this call will revert with a {UnsupportedToken} error.
+    // ///
+    // /// @notice Emits a {LiquidationLimitUpdated} event.
+    // ///
+    // /// @param underlyingToken The address of the underlying token to configure the liquidation limit of.
+    // /// @param maximum         The maximum liquidation limit.
+    // /// @param blocks          The number of blocks it will take for the maximum liquidation limit to be replenished when it is completely exhausted.
+    // function configureLiquidationLimit(address underlyingToken, uint256 maximum, uint256 blocks) external;
 
     /// @notice Set the address of the transmuter.
     ///
@@ -210,35 +212,35 @@ interface IAlchemistV3AdminActions {
     /// @param value The address to set the protocol fee receiver to.
     function setProtocolFeeReceiver(address value) external;
 
-    /// @notice Configures the minting limiter.
-    ///
-    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
-    ///
-    /// @notice Emits a {MintingLimitUpdated} event.
-    ///
-    /// @param maximum The maximum minting limit.
-    /// @param blocks  The number of blocks it will take for the maximum minting limit to be replenished when it is completely exhausted.
-    function configureMintingLimit(uint256 maximum, uint256 blocks) external;
+    // /// @notice Configures the minting limiter.
+    // ///
+    // /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    // ///
+    // /// @notice Emits a {MintingLimitUpdated} event.
+    // ///
+    // /// @param maximum The maximum minting limit.
+    // /// @param blocks  The number of blocks it will take for the maximum minting limit to be replenished when it is completely exhausted.
+    // function configureMintingLimit(uint256 maximum, uint256 blocks) external;
 
-    /// @notice Sets the rate at which credit will be completely available to depositors after it is harvested.
-    ///
-    /// @notice Emits a {CreditUnlockRateUpdated} event.
-    ///
-    /// @param yieldToken The address of the yield token to set the credit unlock rate for.
-    /// @param blocks     The number of blocks that it will take before the credit will be unlocked.
-    function configureCreditUnlockRate(address yieldToken, uint256 blocks) external;
+    // /// @notice Sets the rate at which credit will be completely available to depositors after it is harvested.
+    // ///
+    // /// @notice Emits a {CreditUnlockRateUpdated} event.
+    // ///
+    // /// @param yieldToken The address of the yield token to set the credit unlock rate for.
+    // /// @param blocks     The number of blocks that it will take before the credit will be unlocked.
+    // function configureCreditUnlockRate(address yieldToken, uint256 blocks) external;
 
-    /// @notice Sets the token adapter of a yield token.
-    ///
-    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
-    /// @notice `yieldToken` must be registered or this call will revert with a {UnsupportedToken} error.
-    /// @notice The token that `adapter` supports must be `yieldToken` or this call will revert with a {IllegalState} error.
-    ///
-    /// @notice Emits a {TokenAdapterUpdated} event.
-    ///
-    /// @param yieldToken The address of the yield token to set the adapter for.
-    /// @param adapter    The address to set the token adapter to.
-    function setTokenAdapter(address yieldToken, address adapter) external;
+    // /// @notice Sets the token adapter of a yield token.
+    // ///
+    // /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    // /// @notice `yieldToken` must be registered or this call will revert with a {UnsupportedToken} error.
+    // /// @notice The token that `adapter` supports must be `yieldToken` or this call will revert with a {IllegalState} error.
+    // ///
+    // /// @notice Emits a {TokenAdapterUpdated} event.
+    // ///
+    // /// @param yieldToken The address of the yield token to set the adapter for.
+    // /// @param adapter    The address to set the token adapter to.
+    // function setTokenAdapter(address yieldToken, address adapter) external;
 
     /// @notice Sets the maximum expected value of a yield token that the system can hold.
     ///
@@ -270,10 +272,10 @@ interface IAlchemistV3AdminActions {
     /// @param yieldToken The address of the yield token to snap.
     function snap(address yieldToken) external;
 
-    /// @notice Set the address of the V1 transfer adapter.
-    ///
-    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
-    ///
-    /// @param transferAdapterAddress The address of the V1 transfer adapter to be set in the alchemist.
-    function setTransferAdapterAddress(address transferAdapterAddress) external;
+    // /// @notice Set the address of the V1 transfer adapter.
+    // ///
+    // /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    // ///
+    // /// @param transferAdapterAddress The address of the V1 transfer adapter to be set in the alchemist.
+    // function setTransferAdapterAddress(address transferAdapterAddress) external;
 }

@@ -22,10 +22,10 @@ interface IAlchemistV3Actions {
     /// @param shares     The amount of shares that `spender` will be allowed to withdraw.
     function approveWithdraw(address spender, address yieldToken, uint256 shares) external;
 
-    /// @notice Synchronizes the state of the account owned by `owner`.
-    ///
-    /// @param owner The owner of the account to synchronize.
-    function poke(address owner) external;
+    // /// @notice Synchronizes the state of the account owned by `owner`.
+    // ///
+    // /// @param owner The owner of the account to synchronize.
+    // function poke(address owner) external;
 
     /// @notice Deposit a yield token into a user's account.
     ///
@@ -51,12 +51,11 @@ interface IAlchemistV3Actions {
     /// @notice AlchemistV2(alchemistAddress).deposit(ydai, amount, msg.sender);
     /// @notice ```
     ///
-    /// @param yieldToken The yield-token to deposit.
-    /// @param amount     The amount of yield tokens to deposit.
-    /// @param recipient  The owner of the account that will receive the resulting shares.
+    /// @param user The address of user to credit with deposit
+    /// @param collateralamount  The amount of yield tokens to deposit.
     ///
     /// @return sharesIssued The number of shares issued to `recipient`.
-    function deposit(address yieldToken, uint256 amount, address recipient) external returns (uint256 sharesIssued);
+    function deposit(address user, uint256 collateralamount) external returns (uint256 sharesIssued);
 
     /// @notice Withdraw yield tokens to `recipient` by burning `share` shares. The number of yield tokens withdrawn to `recipient` will depend on the value of shares for that yield token at the time of the call.
     ///
@@ -75,12 +74,10 @@ interface IAlchemistV3Actions {
     /// @notice AlchemistV2(alchemistAddress).withdraw(ydai, amtYieldTokens / pps, msg.sender);
     /// @notice ```
     ///
-    /// @param yieldToken The address of the yield token to withdraw.
-    /// @param shares     The number of shares to burn.
-    /// @param recipient  The address of the recipient.
+    /// @param amount     The number of shares to burn.
     ///
     /// @return amountWithdrawn The number of yield tokens that were withdrawn to `recipient`.
-    function withdraw(address yieldToken, uint256 shares, address recipient) external returns (uint256 amountWithdrawn);
+    function withdraw(uint256 amount) external returns (uint256 amountWithdrawn);
 
     /// @notice Mint `amount` debt tokens.
     ///
