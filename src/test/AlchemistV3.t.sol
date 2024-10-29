@@ -114,14 +114,27 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
 
         // Proxy contracts
         // TransmuterBuffer proxy
-        bytes memory transBufParams = abi.encodeWithSelector(TransmuterBuffer.initialize.selector, alOwner, address(alToken));
+        bytes memory transBufParams = abi.encodeWithSelector(
+            TransmuterBuffer.initialize.selector,
+            alOwner,
+            address(alToken)
+        );
 
-        proxyTransmuterBuffer = new TransparentUpgradeableProxy(address(transmuterBufferLogic), proxyOwner, transBufParams);
+        proxyTransmuterBuffer = new TransparentUpgradeableProxy(
+            address(transmuterBufferLogic),
+            proxyOwner,
+            transBufParams
+        );
 
         transmuterBuffer = TransmuterBuffer(address(proxyTransmuterBuffer));
 
         // TransmuterV3 proxy
-        bytes memory transParams = abi.encodeWithSelector(TransmuterV3.initialize.selector, address(alToken), fakeUnderlyingToken, address(transmuterBuffer));
+        bytes memory transParams = abi.encodeWithSelector(
+            TransmuterV3.initialize.selector,
+            address(alToken),
+            fakeUnderlyingToken,
+            address(transmuterBuffer)
+        );
 
         proxyTransmuter = new TransparentUpgradeableProxy(address(transmuterLogic), proxyOwner, transParams);
         transmuter = TransmuterV3(address(proxyTransmuter));
@@ -129,11 +142,11 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         // AlchemistV3 proxy
         IAlchemistV3.InitializationParams memory params = IAlchemistV3.InitializationParams({
             admin: alOwner,
-            yieldToken: address(fakeYieldToken),
+            _yieldToken: address(fakeYieldToken),
             debtToken: address(alToken),
             underlyingToken: address(fakeUnderlyingToken),
             transmuter: address(transmuterBuffer),
-            maximumLTV: LTV,
+            _LTV: LTV,
             protocolFee: 1000,
             protocolFeeReceiver: address(10),
             mintingLimitMinimum: 1,
@@ -195,7 +208,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         ltv = bound(ltv, 0 + 1e14, LTV - 1e16);
         vm.startPrank(address(0xbeef));
         alchemist.setMaxLoanToValue(ltv);
-        vm.assertApproxEqAbs(alchemist.maximumLTV(), ltv, minimumDepositOrWithdrawalLoss);
+        vm.assertApproxEqAbs(alchemist.LTV(), ltv, minimumDepositOrWithdrawalLoss);
         vm.stopPrank();
     }
 
@@ -223,7 +236,11 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
         alchemist.deposit(address(0xbeef), amount);
         alchemist.mint((amount * ltv) / FIXED_POINT_SCALAR);
-        vm.assertApproxEqAbs(IERC20(alToken).balanceOf(address(0xbeef)), (amount * ltv) / FIXED_POINT_SCALAR, minimumDepositOrWithdrawalLoss);
+        vm.assertApproxEqAbs(
+            IERC20(alToken).balanceOf(address(0xbeef)),
+            (amount * ltv) / FIXED_POINT_SCALAR,
+            minimumDepositOrWithdrawalLoss
+        );
         vm.stopPrank();
     }
 
@@ -236,7 +253,11 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
         alchemist.deposit(address(0xbeef), amount);
         alchemist.mint((amount * ltv) / FIXED_POINT_SCALAR);
-        vm.assertApproxEqAbs(IERC20(alToken).balanceOf(address(0xbeef)), (amount * ltv) / FIXED_POINT_SCALAR, minimumDepositOrWithdrawalLoss);
+        vm.assertApproxEqAbs(
+            IERC20(alToken).balanceOf(address(0xbeef)),
+            (amount * ltv) / FIXED_POINT_SCALAR,
+            minimumDepositOrWithdrawalLoss
+        );
         vm.stopPrank();
     }
 
@@ -288,7 +309,11 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         vm.startPrank(address(0xbeef));
         alchemist.mintFrom(externalUser, ((amount * ltv) / FIXED_POINT_SCALAR), externalUser);
 
-        vm.assertApproxEqAbs(IERC20(alToken).balanceOf(externalUser), (amount * ltv) / FIXED_POINT_SCALAR, minimumDepositOrWithdrawalLoss);
+        vm.assertApproxEqAbs(
+            IERC20(alToken).balanceOf(externalUser),
+            (amount * ltv) / FIXED_POINT_SCALAR,
+            minimumDepositOrWithdrawalLoss
+        );
         vm.stopPrank();
     }
 
@@ -297,9 +322,11 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
         alchemist.deposit(address(0xbeef), amount);
-        alchemist.maxMint();
+        alchemist.mint(alchemist.getMaxBorrowable(address(0xbeef)));
         vm.assertApproxEqAbs(
-            IERC20(alToken).balanceOf(address(0xbeef)), (alchemist.totalValue(address(0xbeef)) * LTV) / FIXED_POINT_SCALAR, minimumDepositOrWithdrawalLoss
+            IERC20(alToken).balanceOf(address(0xbeef)),
+            (alchemist.totalValue(address(0xbeef)) * LTV) / FIXED_POINT_SCALAR,
+            minimumDepositOrWithdrawalLoss
         );
         vm.stopPrank();
     }
@@ -313,12 +340,20 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         alchemist.mint((amount * 25e16) / FIXED_POINT_SCALAR);
 
         // amount/2 has now been minted. The max amount minted should be : ((total deposit * LTV) - amount/2)
-        uint256 maxMinted = alchemist.maxMint();
-        vm.assertApproxEqAbs(maxMinted, ((alchemist.totalValue(address(0xbeef)) * LTV) / FIXED_POINT_SCALAR) - (amount / 2), minimumDepositOrWithdrawalLoss);
+        uint256 maxMinted = alchemist.getMaxBorrowable(address(0xbeef));
+        // actually mint max
+        alchemist.mint(alchemist.getMaxBorrowable(address(0xbeef)));
+        vm.assertApproxEqAbs(
+            maxMinted,
+            ((alchemist.totalValue(address(0xbeef)) * LTV) / FIXED_POINT_SCALAR) - (amount / 2),
+            minimumDepositOrWithdrawalLoss
+        );
 
         // This should result in a final alAsset balance of : deposit amount * LTV
         vm.assertApproxEqAbs(
-            IERC20(alToken).balanceOf(address(0xbeef)), (alchemist.totalValue(address(0xbeef)) * LTV) / FIXED_POINT_SCALAR, minimumDepositOrWithdrawalLoss
+            IERC20(alToken).balanceOf(address(0xbeef)),
+            (alchemist.totalValue(address(0xbeef)) * LTV) / FIXED_POINT_SCALAR,
+            minimumDepositOrWithdrawalLoss
         );
         vm.stopPrank();
     }
@@ -327,7 +362,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         amount = bound(amount, 1e18, accountFunds);
         vm.startPrank(address(0xbeef));
         vm.expectRevert(IllegalArgument.selector);
-        alchemist.maxMint();
+        alchemist.mint(alchemist.getMaxBorrowable(address(0xbeef)));
         vm.stopPrank();
     }
 
@@ -337,7 +372,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
         SafeERC20.safeApprove(address(alToken), address(alchemist), amount + 100e18);
         alchemist.deposit(address(0xbeef), amount);
-        alchemist.maxMint();
+        alchemist.mint(alchemist.getMaxBorrowable(address(0xbeef)));
 
         // max collateral valued in underlying, that can be borrowed for alAsset 1 to 1
         uint256 maxCollateralAmount = (alchemist.totalValue(address(0xbeef)) * LTV) / FIXED_POINT_SCALAR;
@@ -348,7 +383,11 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         (uint256 depositedCollateral, int256 debt) = alchemist.getCDP(address(0xbeef));
 
         // User debt updates to correct value
-        vm.assertApproxEqAbs(uint256(debt), maxCollateralAmount - (maxCollateralAmount / 2), minimumDepositOrWithdrawalLoss);
+        vm.assertApproxEqAbs(
+            uint256(debt),
+            maxCollateralAmount - (maxCollateralAmount / 2),
+            minimumDepositOrWithdrawalLoss
+        );
 
         // The alAsset total supply has updated to the correct amount after burning
         vm.assertApproxEqAbs(supplyAfterBurn, expectedSupplyAfterBurn, minimumDepositOrWithdrawalLoss);
@@ -361,7 +400,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
         SafeERC20.safeApprove(address(fakeUnderlyingToken), address(alchemist), amount + 100e18);
         alchemist.deposit(address(0xbeef), amount);
-        alchemist.maxMint();
+        alchemist.mint(alchemist.getMaxBorrowable(address(0xbeef)));
 
         // max collateral valued in underlying, that can be borrowed for alAsset 1 to 1
         uint256 maxCollateralAmount = (alchemist.totalValue(address(0xbeef)) * LTV) / FIXED_POINT_SCALAR;
@@ -369,10 +408,18 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         (uint256 depositedCollateral, int256 debt) = alchemist.getCDP(address(0xbeef));
 
         // User debt updates to correct value
-        vm.assertApproxEqAbs(uint256(debt), maxCollateralAmount - (maxCollateralAmount / 2), minimumDepositOrWithdrawalLoss);
+        vm.assertApproxEqAbs(
+            uint256(debt),
+            maxCollateralAmount - (maxCollateralAmount / 2),
+            minimumDepositOrWithdrawalLoss
+        );
 
         // Transmuter has recieved the correct amount of underlying tokens
-        vm.assertApproxEqAbs(IERC20(fakeUnderlyingToken).balanceOf(address(transmuterBuffer)), maxCollateralAmount / 2, minimumDepositOrWithdrawalLoss);
+        vm.assertApproxEqAbs(
+            IERC20(fakeUnderlyingToken).balanceOf(address(transmuterBuffer)),
+            maxCollateralAmount / 2,
+            minimumDepositOrWithdrawalLoss
+        );
         vm.stopPrank();
     }
 
@@ -388,12 +435,20 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
 
         // Now altering the yield tokens price (on the dai Yearn Vault) in underyling by artificially inflating the token supply from  1.54e25 to (1.54e25 + 1.54e26/7.3)
         // see https://etherscan.io/address/0xdA816459F1AB5631232FE5e97a05BBBb94970c95#code
-        vm.store(address(fakeYieldToken), bytes32(uint256(5)), bytes32(uint256(((1.54e25 * FIXED_POINT_SCALAR) / 73e17) + 1.54e25)));
+        vm.store(
+            address(fakeYieldToken),
+            bytes32(uint256(5)),
+            bytes32(uint256(((1.54e25 * FIXED_POINT_SCALAR) / 73e17) + 1.54e25))
+        );
         bytes32 modifiedStateVariable = vm.load(address(fakeYieldToken), bytes32(uint256(5)));
         uint256 yieldTokenTotalSupply = IYearnVaultV2(address(fakeYieldToken)).totalSupply();
 
         // make sure the right state variable has been modified
-        vm.assertApproxEqAbs(uint256(modifiedStateVariable), uint256(yieldTokenTotalSupply), minimumDepositOrWithdrawalLoss);
+        vm.assertApproxEqAbs(
+            uint256(modifiedStateVariable),
+            uint256(yieldTokenTotalSupply),
+            minimumDepositOrWithdrawalLoss
+        );
 
         // let another user liquidate the previous user position
         vm.startPrank(externalUser);
