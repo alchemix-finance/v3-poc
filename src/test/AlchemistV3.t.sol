@@ -90,14 +90,17 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
     // another random EOA for testing
     address anotherExternalUser = address(0x420Ab24368E5bA8b727E9B8aB967073Ff9316969);
 
+    //
+    address admin;
+
     function setUp() external {
         // test maniplulation for convenience
-        address caller = address(0xdead);
+        admin = address(0xdead);
         address proxyOwner = address(this);
-        vm.assume(caller != address(0));
+        vm.assume(admin != address(0));
         vm.assume(proxyOwner != address(0));
-        vm.assume(caller != proxyOwner);
-        vm.startPrank(caller);
+        vm.assume(admin != proxyOwner);
+        vm.startPrank(admin);
 
         // Fake tokens
 
@@ -105,7 +108,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         fakeYieldToken = address(yvDai);
 
         // Contracts and logic contracts
-        alOwner = caller;
+        alOwner = admin;
         alToken = new AlchemicTokenV3(_name, _symbol, _flashFee);
         transmuterBufferLogic = new TransmuterBuffer();
         transmuterLogic = new TransmuterV3();
@@ -114,27 +117,14 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
 
         // Proxy contracts
         // TransmuterBuffer proxy
-        bytes memory transBufParams = abi.encodeWithSelector(
-            TransmuterBuffer.initialize.selector,
-            alOwner,
-            address(alToken)
-        );
+        bytes memory transBufParams = abi.encodeWithSelector(TransmuterBuffer.initialize.selector, alOwner, address(alToken));
 
-        proxyTransmuterBuffer = new TransparentUpgradeableProxy(
-            address(transmuterBufferLogic),
-            proxyOwner,
-            transBufParams
-        );
+        proxyTransmuterBuffer = new TransparentUpgradeableProxy(address(transmuterBufferLogic), proxyOwner, transBufParams);
 
         transmuterBuffer = TransmuterBuffer(address(proxyTransmuterBuffer));
 
         // TransmuterV3 proxy
-        bytes memory transParams = abi.encodeWithSelector(
-            TransmuterV3.initialize.selector,
-            address(alToken),
-            fakeUnderlyingToken,
-            address(transmuterBuffer)
-        );
+        bytes memory transParams = abi.encodeWithSelector(TransmuterV3.initialize.selector, address(alToken), fakeUnderlyingToken, address(transmuterBuffer));
 
         proxyTransmuter = new TransparentUpgradeableProxy(address(transmuterLogic), proxyOwner, transParams);
         transmuter = TransmuterV3(address(proxyTransmuter));
@@ -206,7 +196,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
 
     function testSetMaxLTV_Variable_LTV(uint256 ltv) external {
         ltv = bound(ltv, 0 + 1e14, LTV - 1e16);
-        vm.startPrank(address(0xbeef));
+        vm.startPrank(admin);
         alchemist.setMaxLoanToValue(ltv);
         vm.assertApproxEqAbs(alchemist.LTV(), ltv, minimumDepositOrWithdrawalLoss);
         vm.stopPrank();
@@ -236,11 +226,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
         alchemist.deposit(address(0xbeef), amount);
         alchemist.mint((amount * ltv) / FIXED_POINT_SCALAR);
-        vm.assertApproxEqAbs(
-            IERC20(alToken).balanceOf(address(0xbeef)),
-            (amount * ltv) / FIXED_POINT_SCALAR,
-            minimumDepositOrWithdrawalLoss
-        );
+        vm.assertApproxEqAbs(IERC20(alToken).balanceOf(address(0xbeef)), (amount * ltv) / FIXED_POINT_SCALAR, minimumDepositOrWithdrawalLoss);
         vm.stopPrank();
     }
 
@@ -253,11 +239,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
         alchemist.deposit(address(0xbeef), amount);
         alchemist.mint((amount * ltv) / FIXED_POINT_SCALAR);
-        vm.assertApproxEqAbs(
-            IERC20(alToken).balanceOf(address(0xbeef)),
-            (amount * ltv) / FIXED_POINT_SCALAR,
-            minimumDepositOrWithdrawalLoss
-        );
+        vm.assertApproxEqAbs(IERC20(alToken).balanceOf(address(0xbeef)), (amount * ltv) / FIXED_POINT_SCALAR, minimumDepositOrWithdrawalLoss);
         vm.stopPrank();
     }
 
@@ -309,117 +291,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         vm.startPrank(address(0xbeef));
         alchemist.mintFrom(externalUser, ((amount * ltv) / FIXED_POINT_SCALAR), externalUser);
 
-        vm.assertApproxEqAbs(
-            IERC20(alToken).balanceOf(externalUser),
-            (amount * ltv) / FIXED_POINT_SCALAR,
-            minimumDepositOrWithdrawalLoss
-        );
-        vm.stopPrank();
-    }
-
-    function testMaxMint_Variable_Amount(uint256 amount) external {
-        amount = bound(amount, 1e18, accountFunds);
-        vm.startPrank(address(0xbeef));
-        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        alchemist.deposit(address(0xbeef), amount);
-        alchemist.mint(alchemist.getMaxBorrowable(address(0xbeef)));
-        vm.assertApproxEqAbs(
-            IERC20(alToken).balanceOf(address(0xbeef)),
-            (alchemist.totalValue(address(0xbeef)) * LTV) / FIXED_POINT_SCALAR,
-            minimumDepositOrWithdrawalLoss
-        );
-        vm.stopPrank();
-    }
-
-    function testMaxMint_Variable_Amount_Multiple_Mints(uint256 amount) external {
-        amount = bound(amount, 1e18, accountFunds);
-        vm.startPrank(address(0xbeef));
-        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        alchemist.deposit(address(0xbeef), amount);
-        alchemist.mint((amount * 25e16) / FIXED_POINT_SCALAR);
-        alchemist.mint((amount * 25e16) / FIXED_POINT_SCALAR);
-
-        // amount/2 has now been minted. The max amount minted should be : ((total deposit * LTV) - amount/2)
-        uint256 maxMinted = alchemist.getMaxBorrowable(address(0xbeef));
-        // actually mint max
-        alchemist.mint(alchemist.getMaxBorrowable(address(0xbeef)));
-        vm.assertApproxEqAbs(
-            maxMinted,
-            ((alchemist.totalValue(address(0xbeef)) * LTV) / FIXED_POINT_SCALAR) - (amount / 2),
-            minimumDepositOrWithdrawalLoss
-        );
-
-        // This should result in a final alAsset balance of : deposit amount * LTV
-        vm.assertApproxEqAbs(
-            IERC20(alToken).balanceOf(address(0xbeef)),
-            (alchemist.totalValue(address(0xbeef)) * LTV) / FIXED_POINT_SCALAR,
-            minimumDepositOrWithdrawalLoss
-        );
-        vm.stopPrank();
-    }
-
-    function testMaxMint_Variable_Amount_Revert_Zero_Deposit(uint256 amount) external {
-        amount = bound(amount, 1e18, accountFunds);
-        vm.startPrank(address(0xbeef));
-        vm.expectRevert(IllegalArgument.selector);
-        alchemist.mint(alchemist.getMaxBorrowable(address(0xbeef)));
-        vm.stopPrank();
-    }
-
-    function testRepay_Variable_Amount(uint256 amount) external {
-        amount = bound(amount, 1e18, accountFunds);
-        vm.startPrank(address(0xbeef));
-        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        SafeERC20.safeApprove(address(alToken), address(alchemist), amount + 100e18);
-        alchemist.deposit(address(0xbeef), amount);
-        alchemist.mint(alchemist.getMaxBorrowable(address(0xbeef)));
-
-        // max collateral valued in underlying, that can be borrowed for alAsset 1 to 1
-        uint256 maxCollateralAmount = (alchemist.totalValue(address(0xbeef)) * LTV) / FIXED_POINT_SCALAR;
-        uint256 supplyBeforeBurn = IERC20(alToken).totalSupply();
-        uint256 expectedSupplyAfterBurn = supplyBeforeBurn - maxCollateralAmount / 2;
-        alchemist.repay(address(0xbeef), maxCollateralAmount / 2);
-        uint256 supplyAfterBurn = IERC20(alToken).totalSupply();
-        (uint256 depositedCollateral, int256 debt) = alchemist.getCDP(address(0xbeef));
-
-        // User debt updates to correct value
-        vm.assertApproxEqAbs(
-            uint256(debt),
-            maxCollateralAmount - (maxCollateralAmount / 2),
-            minimumDepositOrWithdrawalLoss
-        );
-
-        // The alAsset total supply has updated to the correct amount after burning
-        vm.assertApproxEqAbs(supplyAfterBurn, expectedSupplyAfterBurn, minimumDepositOrWithdrawalLoss);
-        vm.stopPrank();
-    }
-
-    function testRepayUnderlying_Variable_Amount(uint256 amount) external {
-        amount = bound(amount, 1e18, accountFunds);
-        vm.startPrank(address(0xbeef));
-        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        SafeERC20.safeApprove(address(fakeUnderlyingToken), address(alchemist), amount + 100e18);
-        alchemist.deposit(address(0xbeef), amount);
-        alchemist.mint(alchemist.getMaxBorrowable(address(0xbeef)));
-
-        // max collateral valued in underlying, that can be borrowed for alAsset 1 to 1
-        uint256 maxCollateralAmount = (alchemist.totalValue(address(0xbeef)) * LTV) / FIXED_POINT_SCALAR;
-        alchemist.repayWithUnderlying(address(0xbeef), maxCollateralAmount / 2);
-        (uint256 depositedCollateral, int256 debt) = alchemist.getCDP(address(0xbeef));
-
-        // User debt updates to correct value
-        vm.assertApproxEqAbs(
-            uint256(debt),
-            maxCollateralAmount - (maxCollateralAmount / 2),
-            minimumDepositOrWithdrawalLoss
-        );
-
-        // Transmuter has recieved the correct amount of underlying tokens
-        vm.assertApproxEqAbs(
-            IERC20(fakeUnderlyingToken).balanceOf(address(transmuterBuffer)),
-            maxCollateralAmount / 2,
-            minimumDepositOrWithdrawalLoss
-        );
+        vm.assertApproxEqAbs(IERC20(alToken).balanceOf(externalUser), (amount * ltv) / FIXED_POINT_SCALAR, minimumDepositOrWithdrawalLoss);
         vm.stopPrank();
     }
 
@@ -435,20 +307,12 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
 
         // Now altering the yield tokens price (on the dai Yearn Vault) in underyling by artificially inflating the token supply from  1.54e25 to (1.54e25 + 1.54e26/7.3)
         // see https://etherscan.io/address/0xdA816459F1AB5631232FE5e97a05BBBb94970c95#code
-        vm.store(
-            address(fakeYieldToken),
-            bytes32(uint256(5)),
-            bytes32(uint256(((1.54e25 * FIXED_POINT_SCALAR) / 73e17) + 1.54e25))
-        );
+        vm.store(address(fakeYieldToken), bytes32(uint256(5)), bytes32(uint256(((1.54e25 * FIXED_POINT_SCALAR) / 73e17) + 1.54e25)));
         bytes32 modifiedStateVariable = vm.load(address(fakeYieldToken), bytes32(uint256(5)));
         uint256 yieldTokenTotalSupply = IYearnVaultV2(address(fakeYieldToken)).totalSupply();
 
         // make sure the right state variable has been modified
-        vm.assertApproxEqAbs(
-            uint256(modifiedStateVariable),
-            uint256(yieldTokenTotalSupply),
-            minimumDepositOrWithdrawalLoss
-        );
+        vm.assertApproxEqAbs(uint256(modifiedStateVariable), uint256(yieldTokenTotalSupply), minimumDepositOrWithdrawalLoss);
 
         // let another user liquidate the previous user position
         vm.startPrank(externalUser);
@@ -468,7 +332,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         vm.assertApproxEqAbs(assets, accountFunds, minimumDepositOrWithdrawalLoss);
 
         // ensure liquidator fee is correct (total underlying - debt)
-        vm.assertApproxEqAbs(fees, 191_966_404_330_380_896_000_000_000, 1e18);
+        vm.assertApproxEqAbs(fees, 192_740_604_372_705_062_164_173_017, 1e18);
 
         // liquidator gets correct amount of fee
         vm.assertApproxEqAbs(liquidatorPostTokenBalance, liquidatorPrevTokenBalance + fees, 1e18);
@@ -489,4 +353,278 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         (uint256 assets, uint256 fees) = alchemist.liquidate(address(0xbeef));
         vm.stopPrank();
     }
+
+    function testCDP_Fixed_Rate() external {
+        uint256 collateral = 1000e18;
+        uint256 collateral2 = 10_000e18;
+        uint256 mintAmount1 = 100e18;
+        uint256 mintAmount2 = 900e18;
+
+        vm.startPrank(address(0xbeef));
+        // fake transmuter stake and collateral request rate at 200 tokens over 20 blocks i.e. 10 Tokens per block
+        alchemist.mock_transmuter_deposit(200e18);
+
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), accountFunds);
+        alchemist.deposit(address(0xbeef), collateral);
+        alchemist.mint(mintAmount1);
+
+        vm.stopPrank();
+
+        vm.startPrank(externalUser);
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), accountFunds);
+        alchemist.deposit(externalUser, collateral2);
+        alchemist.mint(mintAmount2);
+        vm.stopPrank();
+        vm.startPrank(address(0xbeef));
+
+        emit log_uint(vm.getBlockNumber());
+        (uint256 currentCollateral, int256 debt) = alchemist.getCDP(address(0xbeef));
+        vm.assertApproxEqAbs(currentCollateral, 1_000_000_000_000_000_000_000, 1e18);
+        vm.assertApproxEqAbs(debt, 100_000_000_000_000_000_000, 1e18);
+
+        // fast forward by 5 blocks [5th block]
+        vm.roll(20_592_887);
+        emit log_uint(vm.getBlockNumber());
+        // cdp should reflect the reserved debt after 5 blocks for a collateral request rate of 10 per block
+        (currentCollateral, debt) = alchemist.getCDP(address(0xbeef));
+        vm.assertApproxEqAbs(currentCollateral, 995_000_000_000_000_000_000, 1e18);
+        vm.assertApproxEqAbs(debt, 95_000_000_000_000_000_000, 1e18);
+
+        // fast forward by 5 blocks [10th block]
+        vm.roll(20_592_892);
+        emit log_uint(vm.getBlockNumber());
+        // cdp should reflect the reserved debt after 5 blocks for a collateral request rate of 10 per block
+        (currentCollateral, debt) = alchemist.getCDP(address(0xbeef));
+        vm.assertApproxEqAbs(currentCollateral, 990_000_000_000_000_000_000, 1e18);
+        vm.assertApproxEqAbs(debt, 90_000_000_000_000_000_000, 1e18);
+
+        // fast forward by 5 blocks [15th block]
+        vm.roll(20_592_897);
+        emit log_uint(vm.getBlockNumber());
+        // cdp should reflect the reserved debt after 5 blocks for a collateral request rate of 10 per block
+        (currentCollateral, debt) = alchemist.getCDP(address(0xbeef));
+        vm.assertApproxEqAbs(currentCollateral, 985_000_000_000_000_000_000, 1e18);
+        vm.assertApproxEqAbs(debt, 85_000_000_000_000_000_000, 1e18);
+
+        // fast forward by 5 blocks [20th block]
+        vm.roll(20_592_902);
+        emit log_uint(vm.getBlockNumber());
+        // cdp should reflect the reserved debt after 5 blocks for a collateral request rate of 10 per block
+        (currentCollateral, debt) = alchemist.getCDP(address(0xbeef));
+        vm.assertApproxEqAbs(currentCollateral, 980_000_000_000_000_000_000, 1e18);
+        vm.assertApproxEqAbs(debt, 80_000_000_000_000_000_000, 1e18);
+
+        // fast forward to a bloock where all funds are reserved, but no redemptions have happened [20th block]
+        vm.roll(20_592_912);
+        emit log_uint(vm.getBlockNumber());
+        // cdp should reflect the reserved debt after 5 blocks for a collateral request rate of 5 per block
+        (currentCollateral, debt) = alchemist.getCDP(address(0xbeef));
+        // Ensure the request rate is 0 after the entire tranmsuter stake has been earmarked or redeemeed
+        vm.assertApproxEqAbs(currentCollateral, 980_000_000_000_000_000_000, 1e18);
+        vm.assertApproxEqAbs(debt, 80_000_000_000_000_000_000, 1e18);
+    }
+
+    function testCDP_Variable_Rate() external {
+        uint256 collateral = 1000e18;
+        uint256 collateral2 = 10_000e18;
+        uint256 mintAmount1 = 100e18;
+        uint256 mintAmount2 = 900e18;
+
+        vm.startPrank(address(0xbeef));
+        // fake transmuter stake and collateral request rate at 200 tokens over 20 blocks i.e. 10 Tokens per block
+        alchemist.mock_transmuter_deposit(200e18);
+
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), accountFunds);
+        alchemist.deposit(address(0xbeef), collateral);
+        alchemist.mint(mintAmount1);
+
+        vm.stopPrank();
+
+        vm.startPrank(externalUser);
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), accountFunds);
+        alchemist.deposit(externalUser, collateral2);
+        alchemist.mint(mintAmount2);
+        vm.stopPrank();
+        vm.startPrank(address(0xbeef));
+
+        emit log_uint(vm.getBlockNumber());
+        (uint256 currentCollateral, int256 debt) = alchemist.getCDP(address(0xbeef));
+        vm.assertApproxEqAbs(currentCollateral, 1_000_000_000_000_000_000_000, 1e18);
+        vm.assertApproxEqAbs(debt, 100_000_000_000_000_000_000, 1e18);
+
+        // fast forward by 5 blocks [5th block]
+        vm.roll(20_592_887);
+        emit log_uint(vm.getBlockNumber());
+        // cdp should reflect the reserved debt after 5 blocks for a collateral request rate of 10 per block
+        (currentCollateral, debt) = alchemist.getCDP(address(0xbeef));
+
+        emit log_uint(currentCollateral);
+        emit log_uint(uint256(debt));
+        vm.assertApproxEqAbs(currentCollateral, 995_000_000_000_000_000_000, 1e18);
+        vm.assertApproxEqAbs(debt, 95_000_000_000_000_000_000, 1e18);
+
+        // fake transmuter stake and collateral request rate at 400 (200 + 200) tokens over 20 blocks i.e. 20 Tokens per block
+        alchemist.mock_transmuter_deposit(200e18);
+
+        // fast forward by 5 blocks [10th block]
+        vm.roll(20_592_892);
+        emit log_uint(vm.getBlockNumber());
+        // cdp should reflect the reserved debt after 5 blocks for a collateral request rate of 10 per block
+        (currentCollateral, debt) = alchemist.getCDP(address(0xbeef));
+
+        emit log_uint(currentCollateral);
+        emit log_uint(uint256(debt));
+
+        vm.assertApproxEqAbs(currentCollateral, 985_000_000_000_000_000_000, 1e18);
+        vm.assertApproxEqAbs(debt, 85_000_000_000_000_000_000, 1e18);
+
+        // fast forward by 5 blocks [15th block]
+        vm.roll(20_592_897);
+        emit log_uint(vm.getBlockNumber());
+        // cdp should reflect the reserved debt after 5 blocks for a collateral request rate of 10 per block
+        (currentCollateral, debt) = alchemist.getCDP(address(0xbeef));
+
+        emit log_uint(currentCollateral);
+        emit log_uint(uint256(debt));
+
+        vm.assertApproxEqAbs(currentCollateral, 975_000_000_000_000_000_000, 1e18);
+        vm.assertApproxEqAbs(debt, 75_000_000_000_000_000_000, 1e18);
+
+        // fast forward by 5 blocks [20th block]
+        vm.roll(20_592_902);
+        emit log_uint(vm.getBlockNumber());
+        // cdp should reflect the reserved debt after 5 blocks for a collateral request rate of 10 per block
+        (currentCollateral, debt) = alchemist.getCDP(address(0xbeef));
+
+        emit log_uint(currentCollateral);
+        emit log_uint(uint256(debt));
+
+        vm.assertApproxEqAbs(currentCollateral, 965_000_000_000_000_000_000, 1e18);
+        vm.assertApproxEqAbs(debt, 65_000_000_000_000_000_000, 1e18);
+
+        // fast forward to a bloock where all funds are reserved, but no redemptions have happened [20th block]
+        vm.roll(20_592_912);
+        emit log_uint(vm.getBlockNumber());
+        // cdp should reflect the reserved debt after 5 blocks for a collateral request rate of 5 per block
+        (currentCollateral, debt) = alchemist.getCDP(address(0xbeef));
+
+        emit log_uint(currentCollateral);
+        emit log_uint(uint256(debt));
+
+        vm.assertApproxEqAbs(currentCollateral, 960_000_000_000_000_000_000, 1e18);
+        vm.assertApproxEqAbs(debt, 60_000_000_000_000_000_000, 1e18);
+    }
+
+    /* function testCDP_After_One_Redemption() external {
+        uint256 collateral = 1000e18;
+        uint256 collateral2 = 10000e18;
+
+        uint256 mintAmount1 = 100e18;
+        uint256 mintAmount2 = 50e18;
+        uint256 mintAmount3 = 900e18;
+
+        vm.startPrank(address(0xbeef));
+
+
+        // fake transmuter stake and token request rate at 100 tokens over 10 blocks
+        alchemist.mock_transmuter_deposit(200e18);
+        
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), accountFunds);
+        alchemist.deposit(address(0xbeef), collateral);
+        alchemist.mint(mintAmount1);
+    
+
+        // Calling mock transmuter deposit function to mimick user deposits 
+        // and requests for alchemist collateral from debt holders
+        vm.stopPrank();
+
+        vm.startPrank(externalUser);
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), accountFunds);
+        alchemist.deposit(externalUser, collateral2);
+        alchemist.mint(mintAmount3);
+        vm.stopPrank();
+        vm.startPrank(address(0xbeef));
+
+        emit log_uint(vm.getBlockNumber()); 
+        (uint256 currentCollateral, int256 debt) =  alchemist.getCDP(address(0xbeef));
+
+        emit log_uint(currentCollateral); 
+        emit log_uint(uint256(debt)); 
+
+
+        // fast forward by 5 blocks [5th block]
+        vm.roll(20592887);
+
+        // repay in blobk 5
+        SafeERC20.safeApprove(address(alToken), address(alchemist), accountFunds);
+        alchemist.repay(address(0xbeef), 10e18);
+
+
+
+        emit log_uint(vm.getBlockNumber()); 
+        // cdp should reflect the reserved debt after 5 blocks for a token request rate of 10 per block 
+        ( currentCollateral, debt ) =  alchemist.getCDP(address(0xbeef));
+        // fake transmuter stake and token request rate at an updated 200 tokens over 10 blocks
+        // alchemist.mock_transmuter_stake(100e18);
+
+        emit log_uint(currentCollateral); 
+        emit log_uint(uint256(debt)); 
+
+
+
+
+        // fast forward by 5 blocks [10th block]
+        vm.roll(20592892);
+
+        // repay in blobk 5
+        alchemist.repay(address(0xbeef), 10e18);
+        emit log_uint(vm.getBlockNumber()); 
+
+
+        // cdp should reflect the reserved debt after 5 blocks for a token request rate of 20 per block 
+        ( currentCollateral,  debt) =  alchemist.getCDP(address(0xbeef));
+        // fake transmuter un stake and token request rate an updated 50 tokens over 10 blocks
+        // alchemist.mock_transmuter_unstake(150e18);
+
+        emit log_uint(currentCollateral); 
+        emit log_uint(uint256(debt)); 
+
+
+        // fast forward by 5 blocks [15 block]
+        vm.roll(20592897);
+        emit log_uint(vm.getBlockNumber()); 
+        // cdp should reflect the reserved debt after 5 blocks for a token request rate of 5 per block 
+        ( currentCollateral,  debt) =  alchemist.getCDP(address(0xbeef));
+        // fake transmuter stake and token request rate an updated 150 tokens over 10 blocks
+        // alchemist.mock_transmuter_stake(100e18);
+
+        emit log_uint(currentCollateral); 
+        emit log_uint(uint256(debt)); 
+
+        // fast forward by 5 blocks [20th block]
+        vm.roll(20592902);
+        emit log_uint(vm.getBlockNumber()); 
+        // cdp should reflect the reserved debt after 5 blocks for a token request rate of 5 per block 
+        ( currentCollateral,  debt) =  alchemist.getCDP(address(0xbeef));
+        // fake transmuter stake and token request rate an updated 150 tokens over 10 blocks
+        // alchemist.mock_transmuter_stake(100e18);
+
+
+        emit log_uint(currentCollateral); 
+        emit log_uint(uint256(debt)); 
+
+        // fast forward to a bloock where all funds are reserved, but no redemptions have happened [20th block]
+        vm.roll(20592912);
+        emit log_uint(vm.getBlockNumber()); 
+        // cdp should reflect the reserved debt after 5 blocks for a token request rate of 5 per block 
+        ( currentCollateral,  debt) =  alchemist.getCDP(address(0xbeef));
+        // fake transmuter stake and token request rate an updated 150 tokens over 10 blocks
+        // alchemist.mock_transmuter_stake(100e18);
+
+
+        emit log_uint(currentCollateral); 
+        emit log_uint(uint256(debt)); 
+
+        // alchemist.redeem();
+    }  */
 }

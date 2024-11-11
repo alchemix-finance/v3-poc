@@ -9,6 +9,7 @@ import "./libraries/SafeCast.sol";
 import "./interfaces/ITokenAdapter.sol";
 import {Initializable} from "../lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
 import {Unauthorized, IllegalArgument, InsufficientAllowance} from "./base/Errors.sol";
+import {console} from "../lib/forge-std/src/console.sol";
 
 /// @title  AlchemistV3
 /// @author Alchemix Finance
@@ -25,6 +26,8 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         uint256 balance;
         /// @notice allowances for minting alAssets
         mapping(address => uint256) mintAllowances;
+        // Snapshot of cumulativeRedeemedCollateralPerDebt at last user action
+        uint256 userLastRedeemDebtSnapshot;
     }
 
     string public constant version = "3.0.0";
@@ -57,6 +60,24 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
     Limiters.LinearGrowthLimiter private _mintingLimiter;
 
+    // Earmarking experiment vars
+
+    // Number of blocks a new stake must be redeemed by.
+    // Alternatively, informs how much the tokens (in transmuter stake) per block
+    // Will be requested from the Trasnmuter
+    uint256 public constant FIXED_REDEMPTION_PERIOD_IN_BLOCKS = 20e18; // 10000e18;
+    // Current tokens requested per block
+    uint256 public collateralRequestRate;
+    // Last block at which the rate was updated
+    uint256 public lastRateUpdateBlock;
+    // Cumulative collateral requested up to the last rate update
+    uint256 public cumulativeCollateralRequested;
+    // Cumulative redeemed collateral per unit of debt
+    uint256 public cumulativeRedeemedCollateralPerDebt;
+    // Total amount staked. Funds needed by transmuter.
+    // Will be moved to the Transmuter
+    uint256 public mockTransmuterStake;
+
     modifier onlyAdmin() {
         _checkArgument(msg.sender == admin);
         _;
@@ -64,15 +85,155 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
     constructor() initializer {}
 
+    function updateEarmarkingTracking() private {
+        // Calculate cumulative collateral requested since the last update, before any new rate change
+        uint256 blocksElapsed = lastRateUpdateBlock == 0 ? 0 : uint256(block.number) - lastRateUpdateBlock;
+        cumulativeCollateralRequested += blocksElapsed == 0 ? collateralRequestRate : blocksElapsed * collateralRequestRate;
+
+        // Update mock transmuter token request rate
+        collateralRequestRate = (mockTransmuterStake * FIXED_POINT_SCALAR) / FIXED_REDEMPTION_PERIOD_IN_BLOCKS;
+        lastRateUpdateBlock = block.number;
+    }
+
+    function mock_transmuter_deposit(uint256 amount) external {
+        // increase the `mockTransmuterStake' amount
+        mockTransmuterStake += amount;
+
+        // update cumulative trasnmuter request states
+        updateEarmarkingTracking();
+    }
+
+    function mock_transmuter_withdraw(uint256 amount) external {
+        // decrease the `mockTransmuterStake' amount
+        mockTransmuterStake -= amount;
+
+        // update cumulative trasnmuter request states
+        updateEarmarkingTracking();
+    }
+
+    /// @inheritdoc IAlchemistV3
+    function repay(address user, uint256 amount) external override {
+        // update user's debt
+        uint256 actualAmount = _repay(user, amount);
+
+        // decrease the `mockTransmuterStake' amount
+        mockTransmuterStake -= amount;
+        updateEarmarkingTracking();
+
+        // Update the user's redeem snapshot for accurate on-demand calculations
+        _accounts[user].userLastRedeemDebtSnapshot = cumulativeRedeemedCollateralPerDebt;
+        TokenUtils.safeBurnFrom(debtToken, msg.sender, actualAmount);
+    }
+
+    /// @inheritdoc IAlchemistV3
+    function mint(uint256 amount) external override {
+        _checkArgument(amount > 0);
+
+        // Update user's last redeem debt snapshot
+        _accounts[msg.sender].userLastRedeemDebtSnapshot = cumulativeRedeemedCollateralPerDebt;
+
+        // Mint tokens to self
+        _mint(msg.sender, amount, msg.sender);
+    }
+
+    /// @inheritdoc IAlchemistV3
+    function redeem() external override returns (uint256 amount) {
+        uint256 blocksElapsed = block.number - lastRateUpdateBlock;
+
+        // if we're on the same block, any additional transmuter deposited funds would already
+        // be included at the time the deposit was made
+        uint256 additionalRequested = blocksElapsed * collateralRequestRate;
+
+        // all funds to be sent to the transmuter up to this point
+        uint256 totalRequested = cumulativeCollateralRequested + additionalRequested;
+        if (totalRequested > mockTransmuterStake) {
+            totalRequested = mockTransmuterStake;
+        }
+
+        // Update cumulative redeemed collateral per unit of debt
+        if (IERC20(debtToken).totalSupply() > 0) {
+            cumulativeRedeemedCollateralPerDebt += (totalRequested * FIXED_POINT_SCALAR) / IERC20(debtToken).totalSupply();
+        }
+
+        // amount in AlAsset needed by Transmuter
+        amount = totalRequested;
+
+        // amount at 1 alAsset to 1 underlying token in Yield token
+        uint256 amountInYield = convertUnderlyingTokensToYield(amount);
+
+        TokenUtils.safeApprove(yieldToken, address(this), amountInYield);
+
+        // Transfer yield tokens from alchemist to transmuter, now that the internal storage updates have been committed.
+        TokenUtils.safeTransferFrom(yieldToken, address(this), transmuter, 1e18);
+
+        // decrease the `mockTransmuterStake' amount
+        mockTransmuterStake -= amount;
+
+        console.log("mockTransmuterStake updated : ", mockTransmuterStake);
+
+        // Update mock transmuter token request rate
+        collateralRequestRate = (mockTransmuterStake * FIXED_POINT_SCALAR) / FIXED_REDEMPTION_PERIOD_IN_BLOCKS;
+
+        // Reset cumulative collateral tracking
+        cumulativeCollateralRequested = 0;
+        lastRateUpdateBlock = block.number;
+        return amount;
+    }
+
     function getCDP(address owner) external view returns (uint256, int256) {
+        Account storage account = _accounts[owner];
+        // Track the value of all the funds requested by the tranmsuter.
+        // Separate from the state value `cumulativeCollateralRequested`
+        // Since we might need to adjust this value for each READ operation
+        uint256 totalRequested;
+
+        uint256 blocksElapsed = lastRateUpdateBlock == 0 ? 0 : uint256(block.number) - lastRateUpdateBlock;
+
+        // The `collateralRequestRate` though dynamic, assumes that it will always be included in the `cumulativeCollateralRequested`
+        // Calculation i.e. number of blocks elapsed * most recent rate. `cumulativeCollateralRequested` gets updated
+        // For every rate changing action (Transmuter deposit/withdraw, Alchemist repay, Fixed Time DAO update)
+        if (blocksElapsed == 0) {
+            totalRequested = cumulativeCollateralRequested;
+        } else {
+            totalRequested = cumulativeCollateralRequested + (blocksElapsed * collateralRequestRate);
+        }
+
+        // `totalRequested` can only be <= mockTransmuterStake
+        if (totalRequested > mockTransmuterStake) {
+            totalRequested = mockTransmuterStake;
+        }
+
+        // Update cumulative redeemed collateral per unit of debt
+        if (IERC20(debtToken).totalSupply() > 0) {
+            uint256 cumulativeUnRedeemedCollateralPerDebt = cumulativeRedeemedCollateralPerDebt;
+            cumulativeUnRedeemedCollateralPerDebt += (totalRequested * FIXED_POINT_SCALAR) / IERC20(debtToken).totalSupply();
+
+            console.log("cumulativeUnRedeemedCollateralPerDebt : ", cumulativeUnRedeemedCollateralPerDebt);
+
+            // Calculate unaccounted redemptions for this user based on the difference in cumulative redeemed collateral
+            uint256 unaccountedRedeemedCollateral =
+                (uint256(account.debt) * (cumulativeUnRedeemedCollateralPerDebt - account.userLastRedeemDebtSnapshot)) / FIXED_POINT_SCALAR;
+
+            // Adjust remaining collateral based on unaccounted redemptions
+            uint256 remainingCollateral = account.balance > unaccountedRedeemedCollateral ? account.balance - unaccountedRedeemedCollateral : 0;
+
+            // Adjust remaining debt based on unaccounted redemptions
+            uint256 remainingDebt = uint256(account.debt) > unaccountedRedeemedCollateral ? uint256(account.debt) - unaccountedRedeemedCollateral : 0;
+
+            return (remainingCollateral, int256(remainingDebt));
+        }
+        return (account.balance, int256(account.debt));
+    }
+
+    /*   function getCDP(address owner) external view returns (uint256, int256) {
         Account storage account = _accounts[owner];
 
         return (account.balance, account.debt);
-    }
+    } */
 
-    function getLoanTerms() external view returns (uint256 LTV, uint256 liquidationRatio, uint256 redemptionFee) {
+    function getLoanTerms() external view returns (uint256 LoanToValue, uint256 liquidationRatio, uint256 redemptionFee) {
         /// TODO Return actual LTV, Liquidation ratio, and redemption fee
-        return (LTV, liquidationRatio, redemptionFee);
+        return (LoanToValue, liquidationRatio, redemptionFee);
     }
 
     function getTotalDeposited() external view returns (uint256) {
@@ -87,8 +248,8 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
     function getTotalUnderlyingValue() external view returns (uint256 TVL) {
         /// TODO Read the total value of the TVL in the alchemist, denominated in the underlying token.
-            uint256 yieldTokenTVL = IERC20(yieldToken).balanceOf(address(this));
-            TVL = convertYieldTokensToUnderlying(yieldTokenTVL);
+        uint256 yieldTokenTVL = IERC20(yieldToken).balanceOf(address(this));
+        TVL = convertYieldTokensToUnderlying(yieldTokenTVL);
         return TVL;
     }
 
@@ -96,7 +257,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         // TODO This function could be replaced by another to reflect the underlying value based on yield generated
         uint256 bal = _accounts[owner].balance;
         if (bal > 0) bal = convertYieldTokensToUnderlying(bal);
-        
+
         return bal;
     }
 
@@ -110,11 +271,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         transmuter = params.transmuter;
         protocolFee = params.protocolFee;
         protocolFeeReceiver = params.protocolFeeReceiver;
-        _mintingLimiter = Limiters.createLinearGrowthLimiter(
-            params.mintingLimitMaximum,
-            params.mintingLimitBlocks,
-            params.mintingLimitMinimum
-        );
+        _mintingLimiter = Limiters.createLinearGrowthLimiter(params.mintingLimitMaximum, params.mintingLimitBlocks, params.mintingLimitMinimum);
     }
 
     function setNewYieldToken(address _yieldToken, uint256 _LTV) external onlyAdmin {
@@ -162,17 +319,21 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         return amount;
     }
 
-    /// @inheritdoc IAlchemistV3
+    /*    /// @inheritdoc IAlchemistV3
     function mint(uint256 amount) external override {
         _checkArgument(amount > 0);
         // Mint tokens to self
         _mint(msg.sender, amount, msg.sender);
-    }
+    } */
 
     /// @inheritdoc IAlchemistV3
     function mintFrom(address owner, uint256 amount, address recipient) external override {
         _checkArgument(amount > 0);
         _checkArgument(recipient != address(0));
+
+        if (_accounts[owner].mintAllowances[msg.sender] < amount) {
+            revert InsufficientAllowance();
+        }
 
         // Preemptively decrease the minting allowance, saving gas when the allowance is insufficient
         _accounts[owner].mintAllowances[msg.sender] -= amount;
@@ -181,31 +342,41 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         _mint(msg.sender, amount, recipient);
     }
 
-    /// @inheritdoc IAlchemistV3
+    /*     /// @inheritdoc IAlchemistV3
     function redeem() external override returns (uint256 amount) {
         /// TODO Utilizes getRedemptionRate from the transmuter to know how much to redeem everyone
         return amount;
-    }
+    } */
 
-    /// @inheritdoc IAlchemistV3
+    /*   /// @inheritdoc IAlchemistV3
     function repay(address user, uint256 amount) external override {
         uint256 actualAmount = _repay(user, amount);
         TokenUtils.safeBurnFrom(debtToken, msg.sender, actualAmount);
     }
-
+    */
     /// @inheritdoc IAlchemistV3
     function repayWithUnderlying(address user, uint256 amount) external override {
         uint256 actualAmount = _repay(user, amount);
         TokenUtils.safeTransferFrom(underlyingToken, msg.sender, transmuter, actualAmount);
     }
 
-    /// @dev Gets the amount of an underlying token that `amount` of `yieldToken` is exchangeable for.
+    /// @dev Gets the amount of an underlying token that `amount` of the yieldToken is exchangeable for.
     /// @param amount The amount of yield tokens.
     ///
     /// @return uint256 amount of underlying tokens.
     function convertYieldTokensToUnderlying(uint256 amount) public view returns (uint256) {
         uint8 decimals = TokenUtils.expectDecimals(yieldToken);
         return (amount * IYearnVaultV2(yieldToken).pricePerShare()) / 10 ** decimals;
+    }
+
+    /// @dev Gets the amount of yieldToken that `amount` of its underlying token is exchangeable for.
+    ///
+    /// @param amount     The amount of underlying tokens.
+    ///
+    /// @return The amount of yield tokens.
+    function convertUnderlyingTokensToYield(uint256 amount) public view returns (uint256) {
+        uint8 decimals = TokenUtils.expectDecimals(yieldToken);
+        return amount * 10 ** decimals / IYearnVaultV2(yieldToken).pricePerShare();
     }
 
     /// @inheritdoc IAlchemistV3
@@ -215,19 +386,20 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         // The remainder is sent to the liquidator.
 
         int256 debt = _accounts[owner].debt;
+        assets = _accounts[owner].balance;
 
         if (debt <= 0) {
             revert LiquidationError();
         }
 
         // not using _isUnderCollateralized to avoid looping through balances twice
-        uint256 collateral = totalValue(owner);
+        uint256 collateralInUnderlying = totalValue(owner);
 
-        if ((collateral * LTV) / FIXED_POINT_SCALAR < uint256(debt)) {
+        if ((collateralInUnderlying * LTV) / FIXED_POINT_SCALAR < uint256(debt)) {
             // TODO need to rework the rest of the function for partial liquidations
             // Liquidator fee i.e. yield token price of underlying - debt owed
-            if (collateral > uint256(debt)) {
-                fee = collateral - uint256(debt);
+            if (collateralInUnderlying > uint256(debt)) {
+                fee = collateralInUnderlying - uint256(debt);
             }
 
             // zero out the liquidated users debt
@@ -239,9 +411,15 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
             // TODO check if we want to actually send to Transmuter
             // also, since yield token to debt token isn't obligated to be 1:1,
             // is this the right way to calculate how much gets sent?
-            TokenUtils.safeTransfer(yieldToken, transmuter, uint256(debt));
+            // TODO [domo] I think the funds shouldnt be sent, but kept in the alchemist.
+            // Just need to zero out the users position or step wise liquidate,
+            // Funds should only be sent to transmuter on global redemptions
+            // Commenting both lines below out for now
+            // uint256 remainingCollateralInYieldTokens = convertUnderlyingTokensToYield(collateralInUnderlying - fee);
+            // TokenUtils.safeTransfer(yieldToken, transmuter, remainingCollateralInYieldTokens);
 
             if (fee > 0) {
+                fee = convertUnderlyingTokensToYield(fee);
                 TokenUtils.safeTransfer(yieldToken, msg.sender, fee);
             }
             return (assets, fee);
