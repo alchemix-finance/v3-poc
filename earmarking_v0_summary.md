@@ -28,7 +28,7 @@ Instead, the system uses **accumulated values** to handle debt reductions and ra
 ### Core Functions and Their Roles
 
 1. **`deposit`(transmuter) , `withdraw`(transmuter) and `repay`(alchemist)**:
-   - **`deposit`, `withdraw` and `repay`** are the only actions that update `collateralRequestRate`.
+   - **`deposit`, `withdraw`, `repay` and `redeem`** are the only actions that update `collateralRequestRate`.
    - When either function is called, they first calculate the **cumulative collateral requested** since the last rate change using `cumulativeCollateralRequested` and add the new rate-adjusted request to it. This lets the system apply changes based on all previous rates without storing each one.
    - The `collateralRequestRate` is then updated to a new rate, and `lastRateUpdateBlock` is reset to the current block to mark the new rate’s start.
 2. **`redeem` (Alchemist, Global Redemption)**:
