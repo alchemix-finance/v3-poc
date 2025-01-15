@@ -235,7 +235,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         vm.assertApproxEqAbs(
             IERC20(alToken).balanceOf(address(0xbeef)), (alchemist.totalValue(address(0xbeef)) * ltv) / FIXED_POINT_SCALAR, minimumDepositOrWithdrawalLoss
         );
-        uint256 userLTV = alchemist.getLTV(address(0xbeef));
+        uint256 userLTV = alchemist.getDefaultLTV(address(0xbeef));
         (uint256 depositedCollateral, uint256 debt) = alchemist.getCDP(address(0xbeef));
         uint256 totalCollateral = alchemist.totalValue(address(0xbeef));
         vm.assertApproxEqAbs(userLTV, (debt * FIXED_POINT_SCALAR) / totalCollateral, minimumDepositOrWithdrawalLoss);
@@ -254,7 +254,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         vm.assertApproxEqAbs(
             IERC20(alToken).balanceOf(address(0xbeef)), (alchemist.totalValue(address(0xbeef)) * ltv) / FIXED_POINT_SCALAR, minimumDepositOrWithdrawalLoss
         );
-        uint256 userLTV = alchemist.getLTV(address(0xbeef));
+        uint256 userLTV = alchemist.getDefaultLTV(address(0xbeef));
         (uint256 depositedCollateral, uint256 debt) = alchemist.getCDP(address(0xbeef));
         uint256 totalCollateral = alchemist.totalValue(address(0xbeef));
         vm.assertApproxEqAbs(userLTV, (debt * FIXED_POINT_SCALAR) / totalCollateral, minimumDepositOrWithdrawalLoss);
@@ -347,7 +347,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         vm.stopPrank();
 
         // ensure the user will be liquidated at their last recorded ltv
-        uint256 userLTV = alchemist.getLTV(address(0xbeef));
+        uint256 userLTV = alchemist.getDefaultLTV(address(0xbeef));
         vm.assertApproxEqAbs(userLTV, 9e17, minimumDepositOrWithdrawalLoss);
 
         // ensure debt is reduced by (collateral - (90% of collateral)) i.e. last recorded ltv = .9

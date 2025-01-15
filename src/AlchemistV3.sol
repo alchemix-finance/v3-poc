@@ -37,7 +37,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         /// @notice allowances for minting alAssets
         mapping(address => uint256) mintAllowances;
         /// @notice Last LTV recorded from User's last mint
-        uint256 lastLTV;
+        uint256 defaultLTV;
     }
 
     string public constant version = "3.0.0";
@@ -101,8 +101,8 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         return (_accounts[owner].collateralBalance, _calculateUnrealizedDebt(owner));
     }
 
-    function getLTV(address owner) external view returns (uint256) {
-        return _accounts[owner].lastLTV;
+    function getDefaultLTV(address owner) external view returns (uint256) {
+        return _accounts[owner].defaultLTV;
     }
 
     // function getLoanTerms() external view returns (uint256 LTV, uint256 liquidationRatio, uint256 redemptionFee) {
@@ -168,7 +168,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         TokenUtils.safeTransferFrom(yieldToken, msg.sender, address(this), amount);
 
         // Record the owners ltv
-        _accounts[msg.sender].lastLTV = (amount * FIXED_POINT_SCALAR) / totalValue(msg.sender);
+        _accounts[msg.sender].defaultLTV = (amount * FIXED_POINT_SCALAR) / totalValue(msg.sender);
 
         return amount;
     }
@@ -189,9 +189,9 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
         // Record the owners ltv
         if (totalValue(msg.sender) == 0) {
-            _accounts[msg.sender].lastLTV = 0;
+            _accounts[msg.sender].defaultLTV = 0;
         } else {
-            _accounts[msg.sender].lastLTV = (_accounts[msg.sender].debt * FIXED_POINT_SCALAR) / totalValue(msg.sender);
+            _accounts[msg.sender].defaultLTV = (_accounts[msg.sender].debt * FIXED_POINT_SCALAR) / totalValue(msg.sender);
         }
 
         return amount;
@@ -214,7 +214,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         _mint(msg.sender, amount, recipient);
 
         // Record the owners ltv
-        _accounts[msg.sender].lastLTV = (amount * FIXED_POINT_SCALAR) / totalValue(msg.sender);
+        _accounts[msg.sender].defaultLTV = (amount * FIXED_POINT_SCALAR) / totalValue(msg.sender);
     }
 
     /// @inheritdoc IAlchemistV3
@@ -344,20 +344,20 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         uint256 collateral = totalValue(owner);
 
         // the last ltv recorded from the last time the owner minted
-        uint256 lastLTV;
+        uint256 defaultLTV;
 
         // default to 90% of LTV
-        if (_accounts[owner].lastLTV == 0) {
-            lastLTV = (9e17 * LTV) / FIXED_POINT_SCALAR;
+        if (_accounts[owner].defaultLTV == 0) {
+            defaultLTV = (9e17 * LTV) / FIXED_POINT_SCALAR;
         } else {
-            lastLTV = _accounts[owner].lastLTV;
+            defaultLTV = _accounts[owner].defaultLTV;
         }
 
         // the max debt allowable for the current ammount of collateral based on the max LTV
         uint256 maxDebt = (collateral * LTV) / FIXED_POINT_SCALAR;
 
         if (debt > maxDebt) {
-            uint256 newCollateral = (collateral * lastLTV) / FIXED_POINT_SCALAR;
+            uint256 newCollateral = (collateral * defaultLTV) / FIXED_POINT_SCALAR;
             uint256 liquidationAmount = collateral - newCollateral;
             uint256 newDebt = debt - liquidationAmount;
 
