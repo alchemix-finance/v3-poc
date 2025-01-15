@@ -70,7 +70,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
     mapping(address => bool) users;
 
     // LTV
-    uint256 public MAX_LTV = 9 * 1e17; // .9
+    uint256 public LTV = 9 * 1e17; // .9
 
     uint256 public constant FIXED_POINT_SCALAR = 1e18;
 
@@ -129,7 +129,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
             debtToken: address(alToken),
             underlyingToken: address(fakeUnderlyingToken),
             transmuter: address(transmuter),
-            LTV: MAX_LTV,
+            LTV: LTV,
             protocolFee: 1000,
             protocolFeeReceiver: address(10),
             liquidatorFee: 1000, // Lets say 10% of liquidation amount?
@@ -189,11 +189,11 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         vm.stopPrank();
     }
 
-    /*function testWithdraw(uint256 amount) external {
+    function testWithdraw(uint256 amount) external {
         amount = bound(amount, 1e18, accountFunds);
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        alchemist.deposit( amount, address(0xbeef));
+        alchemist.deposit(amount, address(0xbeef));
         alchemist.withdraw(amount / 2, address(0xbeef));
         (uint256 depositedCollateral, uint256 debt) = alchemist.getCDP(address(0xbeef));
         vm.assertApproxEqAbs(depositedCollateral, amount / 2, minimumDepositOrWithdrawalLoss);
@@ -230,9 +230,15 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         uint256 ltv = 2e17;
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        alchemist.deposit( amount, address(0xbeef));
-        alchemist.mint((amount * ltv) / FIXED_POINT_SCALAR,address(0xbeef));
-        vm.assertApproxEqAbs(IERC20(alToken).balanceOf(address(0xbeef)), (amount * ltv) / FIXED_POINT_SCALAR, minimumDepositOrWithdrawalLoss);
+        alchemist.deposit(amount, address(0xbeef));
+        alchemist.mint((alchemist.totalValue(address(0xbeef)) * ltv) / FIXED_POINT_SCALAR, address(0xbeef));
+        vm.assertApproxEqAbs(
+            IERC20(alToken).balanceOf(address(0xbeef)), (alchemist.totalValue(address(0xbeef)) * ltv) / FIXED_POINT_SCALAR, minimumDepositOrWithdrawalLoss
+        );
+        uint256 userLTV = alchemist.getLTV(address(0xbeef));
+        (uint256 depositedCollateral, uint256 debt) = alchemist.getCDP(address(0xbeef));
+        uint256 totalCollateral = alchemist.totalValue(address(0xbeef));
+        vm.assertApproxEqAbs(userLTV, (debt * FIXED_POINT_SCALAR) / totalCollateral, minimumDepositOrWithdrawalLoss);
         vm.stopPrank();
     }
 
@@ -244,8 +250,14 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
         alchemist.deposit(amount, address(0xbeef));
-        alchemist.mint((amount * ltv) / FIXED_POINT_SCALAR,address(0xbeef));
-        vm.assertApproxEqAbs(IERC20(alToken).balanceOf(address(0xbeef)), (amount * ltv) / FIXED_POINT_SCALAR, minimumDepositOrWithdrawalLoss);
+        alchemist.mint((alchemist.totalValue(address(0xbeef)) * ltv) / FIXED_POINT_SCALAR, address(0xbeef));
+        vm.assertApproxEqAbs(
+            IERC20(alToken).balanceOf(address(0xbeef)), (alchemist.totalValue(address(0xbeef)) * ltv) / FIXED_POINT_SCALAR, minimumDepositOrWithdrawalLoss
+        );
+        uint256 userLTV = alchemist.getLTV(address(0xbeef));
+        (uint256 depositedCollateral, uint256 debt) = alchemist.getCDP(address(0xbeef));
+        uint256 totalCollateral = alchemist.totalValue(address(0xbeef));
+        vm.assertApproxEqAbs(userLTV, (debt * FIXED_POINT_SCALAR) / totalCollateral, minimumDepositOrWithdrawalLoss);
         vm.stopPrank();
     }
 
@@ -270,7 +282,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         vm.startPrank(externalUser);
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
         /// Make deposit for external user
-        alchemist.deposit( amount, externalUser);
+        alchemist.deposit(amount, externalUser);
         vm.stopPrank();
 
         vm.startPrank(address(0xbeef));
@@ -288,7 +300,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         vm.startPrank(externalUser);
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
         /// Make deposit for external user
-        alchemist.deposit( amount, externalUser);
+        alchemist.deposit(amount, externalUser);
 
         /// 0xbeef has been approved up to a mint amount for minting from `externalUser` account.
         alchemist.approveMint(address(0xbeef), amount + 100e18);
@@ -299,7 +311,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
 
         vm.assertApproxEqAbs(IERC20(alToken).balanceOf(externalUser), (amount * ltv) / FIXED_POINT_SCALAR, minimumDepositOrWithdrawalLoss);
         vm.stopPrank();
-    } */
+    }
 
     /* function testLiquidate_Undercollateralized_Position() external {
         // NOTE testing with --fork-block-number 20592882, totalSupply will change if this is not maintained

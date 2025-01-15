@@ -100,6 +100,10 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         return (_accounts[owner].collateralBalance, _calculateUnrealizedDebt(owner));
     }
 
+    function getLTV(address owner) external view returns (uint256) {
+        return _accounts[owner].lastLTV;
+    }
+
     // function getLoanTerms() external view returns (uint256 LTV, uint256 liquidationRatio, uint256 redemptionFee) {
     //     /// TODO Return actual LTV, Liquidation ratio, and redemption fee
     //     return (LTV, liquidationRatio, redemptionFee);
@@ -162,6 +166,9 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         // Transfer tokens from msg.sender now that the internal storage updates have been committed.
         TokenUtils.safeTransferFrom(yieldToken, msg.sender, address(this), amount);
 
+        // Record the owners ltv
+        _accounts[msg.sender].lastLTV = (amount * FIXED_POINT_SCALAR) / totalValue(msg.sender);
+
         return amount;
     }
 
@@ -180,7 +187,11 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         TokenUtils.safeTransfer(yieldToken, recipient, amount);
 
         // Record the owners ltv
-        _accounts[msg.sender].lastLTV = (amount * FIXED_POINT_SCALAR) / totalValue(msg.sender);
+        if (totalValue(msg.sender) == 0) {
+            _accounts[msg.sender].lastLTV = 0;
+        } else {
+            _accounts[msg.sender].lastLTV = (_accounts[msg.sender].debt * FIXED_POINT_SCALAR) / totalValue(msg.sender);
+        }
 
         return amount;
     }
@@ -209,6 +220,10 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     function mintFrom(address owner, uint256 amount, address recipient) external override {
         _checkArgument(amount > 0);
         _checkArgument(recipient != address(0));
+
+        if (_accounts[owner].mintAllowances[msg.sender] < amount) {
+            revert InsufficientAllowance();
+        }
 
         // Preemptively decrease the minting allowance, saving gas when the allowance is insufficient
         _accounts[owner].mintAllowances[msg.sender] -= amount;
@@ -328,7 +343,11 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         uint256 collateral = totalValue(owner);
 
         // the last ltv recorded from the last time the owner minted
-        uint256 lastLTV = _accounts[owner].lastLTV;
+        uint256 lastLTV;
+        // default to 90% of LTV
+        if (_accounts[owner].lastLTV == 0) {
+            lastLTV = (LTV * 9e17) / FIXED_POINT_SCALAR;
+        }
 
         // the max debt allowable for the current ammount of collateral based on the max LTV
         uint256 maxDebt = (collateral * LTV) / FIXED_POINT_SCALAR;
