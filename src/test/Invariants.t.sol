@@ -18,6 +18,7 @@ import {Whitelist} from "../utils/Whitelist.sol";
 import {IAlchemistV3} from "../interfaces/IAlchemistV3.sol";
 
 import {SafeERC20} from "../libraries/SafeERC20.sol";
+import {ITransmuter} from "../interfaces/ITransmuter.sol";
 
 contract InvariantTests is Test {
     AlchemistHandler public alchemistHandler;
@@ -92,7 +93,7 @@ contract InvariantTests is Test {
     // TODO: extend this
     address[] userList = [address(0x123), address(0x234)];
 
-	function setUp() public {
+    function setUp() public {
         // TODO: Multi alchemist set up
 
         address caller = address(0xdead);
@@ -118,7 +119,7 @@ contract InvariantTests is Test {
         // bytes memory transParams = abi.encodeWithSelector(Transmuter.initialize.selector, address(alToken), fakeUnderlyingToken);
 
         // proxyTransmuter = new TransparentUpgradeableProxy(address(transmuterLogic), proxyOwner, transParams);
-        transmuter = new Transmuter(InitializationParams(address(alToken), 30 days));
+        transmuter = new Transmuter(ITransmuter.InitializationParams(address(alToken), 30 days));
 
         // AlchemistV3 proxy
         IAlchemistV3.InitializationParams memory params = IAlchemistV3.InitializationParams({
@@ -130,6 +131,7 @@ contract InvariantTests is Test {
             LTV: LTV,
             protocolFee: 1000,
             protocolFeeReceiver: address(10),
+            liquidatorFee: 10e16, // Lets say 10% of liquidation amount?
             mintingLimitMinimum: 1,
             mintingLimitMaximum: uint256(type(uint160).max),
             mintingLimitBlocks: 300
@@ -175,9 +177,7 @@ contract InvariantTests is Test {
         selectors[0] = TransmuterHandler.claimRedemption.selector;
         selectors[1] = TransmuterHandler.createRedemption.selector;
 
-        targetSelector(
-            FuzzSelector({addr: address(transmuterHandler), selectors: selectors})
-        );
+        targetSelector(FuzzSelector({addr: address(transmuterHandler), selectors: selectors}));
 
         selectors = new bytes4[](6);
         selectors[0] = AlchemistHandler.deposit.selector;
@@ -186,10 +186,8 @@ contract InvariantTests is Test {
         selectors[3] = AlchemistHandler.repay.selector;
         selectors[4] = AlchemistHandler.liquidate.selector;
         selectors[5] = AlchemistHandler.repay.selector;
-        
-        targetSelector(
-            FuzzSelector({addr: address(alchemistHandler), selectors: selectors})
-        );
+
+        targetSelector(FuzzSelector({addr: address(alchemistHandler), selectors: selectors}));
     }
 
     // The system cannot take more from the user than they earn
@@ -214,10 +212,10 @@ contract InvariantTests is Test {
 
         // Once alchemist getCDP function is complete we can uncomment this
         for (uint256 i = 0; i < userList.length; i++) {
-			// (balance, ) = alchemist.getCDP(userList[i], address(fakeYieldToken));
-			// userShares += balance;
-		}
-        
+            // (balance, ) = alchemist.getCDP(userList[i], address(fakeYieldToken));
+            // userShares += balance;
+        }
+
         totalBalance = alchemist.getTotalDeposited();
 
         assertEq(userShares, totalBalance);
@@ -234,9 +232,9 @@ contract InvariantTests is Test {
 
     //     // Once alchemist getCDP function is complete we can uncomment this
     //     for (uint256 i = 0; i < userList.length; i++) {
-	// 		// (balance, debt) = alchemist.getCDP(userList[i], address(fakeYieldToken));
-	// 		// totalDebtBefore += debt;
-	// 	}
+    // 		// (balance, debt) = alchemist.getCDP(userList[i], address(fakeYieldToken));
+    // 		// totalDebtBefore += debt;
+    // 	}
 
     //     vm.roll(block.number + 3000);
 
@@ -245,9 +243,9 @@ contract InvariantTests is Test {
     //     uint256 totalDebtAfter;
 
     //     for (uint256 i = 0; i < userList.length; i++) {
-	// 		// (balance, debt) = alchemist.getCDP(userList[i], address(fakeYieldToken));
-	// 		// totalDebtAfter += debt;
-	// 	}
+    // 		// (balance, debt) = alchemist.getCDP(userList[i], address(fakeYieldToken));
+    // 		// totalDebtAfter += debt;
+    // 	}
 
     //     // Sum of debt before with redemption rate applied over time compared to current sum of user debt
     //     assertEq(totalDebtBefore - (totalDebtBefore * (transmuter.redemptionRate() * 3000)), totalDebtAfter);

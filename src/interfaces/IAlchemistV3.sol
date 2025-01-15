@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT 
+// SPDX-License-Identifier: MIT
 pragma solidity >0.8.0;
 
 import "./IAlchemistV3Errors.sol";
@@ -27,6 +27,8 @@ interface IAlchemistV3 is IAlchemistV3Errors {
         uint256 protocolFee;
         // The address that receives protocol fees.
         address protocolFeeReceiver;
+        // The address that receives liquidator fees.
+        uint256 liquidatorFee;
         // A limit used to prevent administrators from making minting functionality inoperable.
         uint256 mintingLimitMinimum;
         // The maximum number of tokens that can be minted per period of time.
@@ -41,14 +43,13 @@ interface IAlchemistV3 is IAlchemistV3Errors {
     /// @param amount  The amount of tokens that `spender` will be allowed to mint.
     function approveMint(address spender, uint256 amount) external;
 
-    /// @notice Deposits yield tokens to `user` with amount `collateralAmount`.
+    /// @notice Deposits yield tokens to `recipient` with amount `collateralAmount`.
     ///
-    /// @param user The address of the user to credit with deposit.
     /// @param collateralAmount  The amount of yield tokens to deposit.
     /// @param recipient  The address that will own the position.
     ///
     /// @return amountDeposited The number of yield tokens that were deposited to the account owner.
-    function deposit(address user, uint256 collateralAmount, address recipient) external returns (uint256 amountDeposited);
+    function deposit(uint256 collateralAmount, address recipient) external returns (uint256 amountDeposited);
 
     /// @notice Withdraws the desired `amount` of yield tokens.
     /// @notice Maximum amount equivalent to whatever puts the user at the maxLTV.
@@ -88,7 +89,7 @@ interface IAlchemistV3 is IAlchemistV3Errors {
     /// @param recipient Address of the user having debt repaid.
     ///
     /// @return credit Amount of credit received.
-    function burn( uint256 amount, address recipient) external returns (uint256 credit);
+    function burn(uint256 amount, address recipient) external returns (uint256 credit);
 
     /// @notice Reduces the debt of `recipient` by repaying underlying tokens to the transmuter.
     /// @notice Callable by anyone.

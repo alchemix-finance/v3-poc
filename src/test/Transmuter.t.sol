@@ -7,6 +7,8 @@ import {StdCheats} from "../../../lib/forge-std/src/StdCheats.sol";
 import {AlEth} from "../external/AlETH.sol";
 import {Transmuter, InitializationParams} from "../Transmuter.sol";
 
+import {ITransmuter} from "../interfaces/ITransmuter.sol";
+
 contract TransmuterTest is Test {
     AlEth public alETH;
     AlEth public collateralToken;
@@ -20,7 +22,7 @@ contract TransmuterTest is Test {
         collateralToken = new AlEth();
         underlyingToken = new AlEth();
 
-        transmuter = new Transmuter(InitializationParams(address(alETH), 5256000));
+        transmuter = new Transmuter(ITransmuter.InitializationParams(address(alETH), 5_256_000));
 
         transmuter.addAlchemist(alchemist);
 
@@ -124,7 +126,7 @@ contract TransmuterTest is Test {
         vm.prank(address(0xbeef));
         transmuter.createRedemption(alchemist, address(underlyingToken), 100e18);
 
-        vm.roll(block.number + 5256000);
+        vm.roll(block.number + 5_256_000);
 
         vm.prank(address(0xbeef));
         transmuter.claimRedemption(1);
@@ -138,7 +140,7 @@ contract TransmuterTest is Test {
         vm.prank(address(0xbeef));
         transmuter.createRedemption(alchemist, address(underlyingToken), amount);
 
-        vm.roll(block.number + 5256001);
+        vm.roll(block.number + 5_256_001);
 
         vm.prank(address(0xbeef));
         transmuter.claimRedemption(1);
@@ -162,4 +164,4 @@ contract TransmuterTest is Test {
         vm.prank(address(0xbeef));
         transmuter.claimRedemption(1);
     }
-} // TODO: Add test for new fenwick tree
+}
