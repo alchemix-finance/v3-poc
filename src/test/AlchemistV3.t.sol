@@ -313,18 +313,24 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         vm.stopPrank();
     }
 
-    /* function testLiquidate_Undercollateralized_Position() external {
+    function testLiquidate_Undercollateralized_Position() external {
         // NOTE testing with --fork-block-number 20592882, totalSupply will change if this is not maintained
 
-        uint256 amount = accountFunds;
+        uint256 amount = accountFunds; // 2 billion yvdai
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        alchemist.deposit(address(0xbeef), amount);
-        alchemist.mint((amount * LTV) / FIXED_POINT_SCALAR);
+        alchemist.deposit(amount, address(0xbeef));
+        alchemist.mint((alchemist.totalValue(address(0xbeef)) * LTV) / FIXED_POINT_SCALAR, address(0xbeef));
         vm.stopPrank();
+
+        (uint256 prevDepositedCollateral, uint256 prevDebt) = alchemist.getCDP(address(0xbeef));
+
+        // ensure initial debt is correct
+        vm.assertApproxEqAbs(prevDebt, 2_037_939_937_056_352_938_600_000_000, minimumDepositOrWithdrawalLoss);
 
         // Now altering the yield tokens price (on the dai Yearn Vault) in underyling by artificially inflating the token supply from  1.54e25 to (1.54e25 + 1.54e26/7.3)
         // see https://etherscan.io/address/0xdA816459F1AB5631232FE5e97a05BBBb94970c95#code
+        // Line 915, increase self.totalSupply with everything else being equal to decrease the share price
         vm.store(address(fakeYieldToken), bytes32(uint256(5)), bytes32(uint256(((1.54e25 * FIXED_POINT_SCALAR) / 73e17) + 1.54e25)));
         bytes32 modifiedStateVariable = vm.load(address(fakeYieldToken), bytes32(uint256(5)));
         uint256 yieldTokenTotalSupply = IYearnVaultV2(address(fakeYieldToken)).totalSupply();
@@ -335,28 +341,32 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         // let another user liquidate the previous user position
         vm.startPrank(externalUser);
         uint256 liquidatorPrevTokenBalance = IERC20(fakeYieldToken).balanceOf(address(externalUser));
-        (uint256 assets, uint256 fees) = alchemist.liquidate(address(0xbeef));
+        (uint256 assets, uint256 fee) = alchemist.liquidate(address(0xbeef));
         uint256 liquidatorPostTokenBalance = IERC20(fakeYieldToken).balanceOf(address(externalUser));
-        (uint256 depositedCollateral, int256 debt) = alchemist.getCDP(address(0xbeef));
+        (uint256 depositedCollateral, uint256 debt) = alchemist.getCDP(address(0xbeef));
         vm.stopPrank();
 
-        // ensure debt is zero
-        vm.assertApproxEqAbs(debt, 0, minimumDepositOrWithdrawalLoss);
+        // ensure the user will be liquidated at their last recorded ltv
+        uint256 userLTV = alchemist.getLTV(address(0xbeef));
+        vm.assertApproxEqAbs(userLTV, 9e17, minimumDepositOrWithdrawalLoss);
 
-        // ensure depositedCollateral is zero
-        vm.assertApproxEqAbs(depositedCollateral, 0, minimumDepositOrWithdrawalLoss);
+        // ensure debt is reduced by (collateral - (90% of collateral)) i.e. last recorded ltv = .9
+        vm.assertApproxEqAbs(debt, 1_838_743_296_623_314_849_000_000_000, minimumDepositOrWithdrawalLoss);
 
-        // ensure assets liquidated is equal to the amount put in
-        vm.assertApproxEqAbs(assets, accountFunds, minimumDepositOrWithdrawalLoss);
+        // ensure depositedCollateral is reduced by (collateral - (90% of collateral)) i.e. last recorded ltv = .9
+        vm.assertApproxEqAbs(depositedCollateral, 1_772_850_099_854_038_997_440_000_000, minimumDepositOrWithdrawalLoss);
 
-        // ensure liquidator fee is correct (total underlying - debt)
-        vm.assertApproxEqAbs(fees, 192_740_604_372_705_062_164_173_017, 1e18);
+        // ensure assets liquidated is equal (collateral - (90% of collateral))
+        vm.assertApproxEqAbs(assets, 199_196_640_433_038_089_600_000_000, minimumDepositOrWithdrawalLoss);
+
+        // ensure liquidator fee is correct (10% of liquidation amount)
+        vm.assertApproxEqAbs(fee, 19_919_664_043_303_808_960_000_000, 1e18);
 
         // liquidator gets correct amount of fee
-        vm.assertApproxEqAbs(liquidatorPostTokenBalance, liquidatorPrevTokenBalance + fees, 1e18);
+        vm.assertApproxEqAbs(liquidatorPostTokenBalance, liquidatorPrevTokenBalance + fee, 1e18);
     }
 
-    function testLiquidate_Revert_If_Overcollateralized_Position() external {
+    /* function testLiquidate_Revert_If_Overcollateralized_Position() external {
         uint256 amount = accountFunds;
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);

@@ -10,6 +10,7 @@ import "./libraries/Limiters.sol";
 import "./libraries/SafeCast.sol";
 import {Initializable} from "../lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
 import {Unauthorized, IllegalArgument, InsufficientAllowance, MissingInputData} from "./base/Errors.sol";
+import {console} from "../lib/forge-std/src/console.sol";
 
 // TODO: Potentially switch from proprietary librariies
 // TODO: Add events
@@ -344,9 +345,12 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
         // the last ltv recorded from the last time the owner minted
         uint256 lastLTV;
+
         // default to 90% of LTV
         if (_accounts[owner].lastLTV == 0) {
-            lastLTV = (LTV * 9e17) / FIXED_POINT_SCALAR;
+            lastLTV = (9e17 * LTV) / FIXED_POINT_SCALAR;
+        } else {
+            lastLTV = _accounts[owner].lastLTV;
         }
 
         // the max debt allowable for the current ammount of collateral based on the max LTV
@@ -358,7 +362,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
             uint256 newDebt = debt - liquidationAmount;
 
             if (liquidationAmount > 0) {
-                fee = (liquidationAmount * liquidatorFee) / FIXED_POINT_SCALAR;
+                fee = liquidationAmount * liquidatorFee / 10_000;
                 newCollateral -= fee;
                 assets = liquidationAmount;
             }
