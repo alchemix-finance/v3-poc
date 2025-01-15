@@ -70,7 +70,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
     mapping(address => bool) users;
 
     // LTV
-    uint256 public LTV = 9 * 1e17; // .9
+    uint256 public MAX_LTV = 9 * 1e17; // .9
 
     uint256 public constant FIXED_POINT_SCALAR = 1e18;
 
@@ -129,10 +129,10 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
             debtToken: address(alToken),
             underlyingToken: address(fakeUnderlyingToken),
             transmuter: address(transmuter),
-            LTV: LTV,
+            LTV: MAX_LTV,
             protocolFee: 1000,
             protocolFeeReceiver: address(10),
-            liquidatorFee: 10e16, // Lets say 10% of liquidation amount?
+            liquidatorFee: 1000, // Lets say 10% of liquidation amount?
             mintingLimitMinimum: 1,
             mintingLimitMaximum: uint256(type(uint160).max),
             mintingLimitBlocks: 300
@@ -179,17 +179,17 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         vm.stopPrank();
     }
 
-    /*    function testDeposit(uint256 amount) external {
+    function testDeposit(uint256 amount) external {
         amount = bound(amount, 1e18, 1000e18);
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        alchemist.deposit( amount, address(0xbeef));
+        alchemist.deposit(amount, address(0xbeef));
         (uint256 depositedCollateral, uint256 debt) = alchemist.getCDP(address(0xbeef));
         vm.assertApproxEqAbs(depositedCollateral, amount, minimumDepositOrWithdrawalLoss);
         vm.stopPrank();
     }
 
-    function testWithdraw(uint256 amount) external {
+    /*function testWithdraw(uint256 amount) external {
         amount = bound(amount, 1e18, accountFunds);
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);

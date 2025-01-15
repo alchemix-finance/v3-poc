@@ -482,9 +482,11 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     ///
     /// @return The amount of debt that the account owned by `owner` will have after an update.
     function _calculateUnrealizedDebt(address owner) internal view returns (uint256) {
+        if (totalDebt == 0) {
+            return 0;
+        }
         // TODO: update this for redemptions
         Account storage account = _accounts[owner];
-
         uint256 amount = ITransmuter(transmuter).queryGraph(lastEarmarkBlock + 1, block.number);
         uint256 earmarkWeightCopy = earmarkWeight + (amount * FIXED_POINT_SCALAR / totalDebt);
         uint256 debtToEarmark = account.debt * (earmarkWeightCopy - account.lastAccruedEarmarkWeight) / FIXED_POINT_SCALAR;
