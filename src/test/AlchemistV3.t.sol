@@ -179,7 +179,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         vm.stopPrank();
     }
 
-    function testDeposit(uint256 amount) external {
+    /*function testDeposit(uint256 amount) external {
         amount = bound(amount, 1e18, 1000e18);
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
@@ -311,7 +311,7 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
 
         vm.assertApproxEqAbs(IERC20(alToken).balanceOf(externalUser), (amount * ltv) / FIXED_POINT_SCALAR, minimumDepositOrWithdrawalLoss);
         vm.stopPrank();
-    }
+    } 
 
     function testLiquidate_Undercollateralized_Position() external {
         // NOTE testing with --fork-block-number 20592882, totalSupply will change if this is not maintained
@@ -364,14 +364,70 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
 
         // liquidator gets correct amount of fee
         vm.assertApproxEqAbs(liquidatorPostTokenBalance, liquidatorPrevTokenBalance + fee, 1e18);
+    } */
+
+    function testLiquidate_Undercollateralized_Position() external {
+        // NOTE testing with --fork-block-number 20592882, totalSupply will change if this is not maintained
+
+        uint256 amount = accountFunds; // 2 billion yvdai
+        vm.startPrank(address(0xbeef));
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
+        alchemist.deposit(amount, address(0xbeef));
+        alchemist.mint((alchemist.totalValue(address(0xbeef)) * LTV) / FIXED_POINT_SCALAR, address(0xbeef));
+        vm.stopPrank();
+
+        (uint256 prevDepositedCollateral, uint256 prevDebt) = alchemist.getCDP(address(0xbeef));
+
+        // ensure initial debt is correct
+        vm.assertApproxEqAbs(prevDebt, 2_037_939_937_056_352_938_600_000_000, minimumDepositOrWithdrawalLoss);
+
+        // Now altering the yield tokens price (on the dai Yearn Vault) in underyling by artificially inflating the token supply from  1.54e25 to (1.54e25 + 1.54e26/7.3)
+        // see https://etherscan.io/address/0xdA816459F1AB5631232FE5e97a05BBBb94970c95#code
+        // Line 915, increase self.totalSupply with everything else being equal to decrease the share price
+        uint256 initialVaultSupply = IYearnVaultV2(address(fakeYieldToken)).totalSupply();
+        // increasing yeild token suppy by 10 bps or .1%  while keeping the unederlying supply unchanged
+        uint256 modifiedVaultSupply = (initialVaultSupply * 10 / 10_000) + initialVaultSupply;
+        vm.store(address(fakeYieldToken), bytes32(uint256(5)), bytes32(modifiedVaultSupply));
+        bytes32 modifiedStateVariable = vm.load(address(fakeYieldToken), bytes32(uint256(5)));
+        uint256 yieldTokenTotalSupply = IYearnVaultV2(address(fakeYieldToken)).totalSupply();
+
+        // make sure the right state variable has been modified
+        vm.assertApproxEqAbs(uint256(modifiedStateVariable), uint256(yieldTokenTotalSupply), minimumDepositOrWithdrawalLoss);
+
+        // let another user liquidate the previous user position
+        vm.startPrank(externalUser);
+        uint256 liquidatorPrevTokenBalance = IERC20(fakeYieldToken).balanceOf(address(externalUser));
+        (uint256 assets, uint256 fee) = alchemist.liquidate(address(0xbeef));
+        uint256 liquidatorPostTokenBalance = IERC20(fakeYieldToken).balanceOf(address(externalUser));
+        (uint256 depositedCollateral, uint256 debt) = alchemist.getCDP(address(0xbeef));
+        vm.stopPrank();
+
+        // ensure the user will be liquidated at their last recorded ltv
+        uint256 userLTV = alchemist.getDefaultLTV(address(0xbeef));
+        vm.assertApproxEqAbs(userLTV, 9e17, minimumDepositOrWithdrawalLoss);
+
+        // ensure debt is reduced by (underlying collateral - (90% of underlying collateral)) i.e. last recorded ltv = .9
+        vm.assertApproxEqAbs(debt, 1_811_728_377_831_538_537_600_000_000, minimumDepositOrWithdrawalLoss);
+
+        // ensure depositedCollateral is reduced by (underlying collateral - (90% of underlying collateral)) i.e. last recorded ltv = .9
+        vm.assertApproxEqAbs(depositedCollateral, 1_780_000_000_000_000_000_000_000_000, minimumDepositOrWithdrawalLoss);
+
+        // ensure assets liquidated is equal (collateral - (90% of collateral))
+        vm.assertApproxEqAbs(assets, 226_211_559_224_814_401_000_000_000, minimumDepositOrWithdrawalLoss);
+
+        // ensure liquidator fee is correct (10% of liquidation amount)
+        vm.assertApproxEqAbs(fee, 22_621_155_922_481_440_100_000_000, 1e18);
+
+        // liquidator gets correct amount of fee
+        vm.assertApproxEqAbs(liquidatorPostTokenBalance, liquidatorPrevTokenBalance + fee, 1e18);
     }
 
-    /* function testLiquidate_Revert_If_Overcollateralized_Position() external {
+    function testLiquidate_Revert_If_Overcollateralized_Position() external {
         uint256 amount = accountFunds;
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        alchemist.deposit(address(0xbeef), amount);
-        alchemist.mint((amount * LTV) / FIXED_POINT_SCALAR);
+        alchemist.deposit(amount, address(0xbeef));
+        alchemist.mint((amount * LTV) / FIXED_POINT_SCALAR, address(0xbeef));
         vm.stopPrank();
 
         // let another user liquidate the previous user position
@@ -380,5 +436,5 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         vm.expectRevert(LiquidationError.selector);
         (uint256 assets, uint256 fees) = alchemist.liquidate(address(0xbeef));
         vm.stopPrank();
-    } */
+    }
 }

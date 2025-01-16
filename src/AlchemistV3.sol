@@ -336,7 +336,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         // Sync current user debt before liquidation
         _sync(owner);
         uint256 debt = _accounts[owner].debt;
-        if (debt <= 0) {
+        if (debt == 0) {
             return (0, 0);
         }
 
@@ -367,11 +367,13 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
                 assets = liquidationAmount;
             }
 
+            uint256 yieldTokenCollateral = convertUnderlyingToYieldTokens(newCollateral);
+
             // update user debt
             _accounts[owner].debt = newDebt;
 
             // update user balance
-            _accounts[owner].collateralBalance = newCollateral;
+            _accounts[owner].collateralBalance = yieldTokenCollateral;
 
             if (fee > 0) {
                 // TODO fix next line (placeholder using first token in array)
@@ -403,6 +405,14 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     function convertYieldTokensToUnderlying(uint256 amount) public view returns (uint256) {
         uint8 decimals = TokenUtils.expectDecimals(yieldToken);
         return (amount * IYearnVaultV2(yieldToken).pricePerShare()) / 10 ** decimals;
+    }
+
+    /// @dev Returns the yield tokens for `amount` in underlying tokens.
+    ///
+    /// @param amount   The amount to convert.
+    function convertUnderlyingToYieldTokens(uint256 amount) public view returns (uint256) {
+        uint8 decimals = TokenUtils.expectDecimals(yieldToken);
+        return (amount * (10 ** decimals)) / IYearnVaultV2(yieldToken).pricePerShare();
     }
 
     /// @dev Normalizes underlying tokens to debt tokens.
