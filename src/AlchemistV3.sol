@@ -150,6 +150,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         liquidatorFee = params.liquidatorFee;
         lastEarmarkBlock = block.number;
         _mintingLimiter = Limiters.createLinearGrowthLimiter(params.mintingLimitMaximum, params.mintingLimitBlocks, params.mintingLimitMinimum);
+        TokenUtils.safeApprove(yieldToken, address(this), type(uint256).max);
     }
 
     /// @inheritdoc IAlchemistV3
@@ -341,12 +342,12 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         }
 
         // owner collateral denominated in underlying value
-        uint256 collateral = totalValue(owner);
+        uint256 collateralInUnderlying = totalValue(owner);
 
-        // the last ltv recorded from the last time the owner minted
+        // the last ltv recorded from the last time the owner performed an ltv changing action
         uint256 defaultLTV;
 
-        // default to 90% of LTV
+        // default to 90% of Max LTV
         if (_accounts[owner].defaultLTV == 0) {
             defaultLTV = (9e17 * LTV) / FIXED_POINT_SCALAR;
         } else {
@@ -354,26 +355,32 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         }
 
         // the max debt allowable for the current ammount of collateral based on the max LTV
-        uint256 maxDebt = (collateral * LTV) / FIXED_POINT_SCALAR;
+        uint256 maxDebt = (collateralInUnderlying * LTV) / FIXED_POINT_SCALAR;
 
         if (debt > maxDebt) {
-            uint256 newCollateral = (collateral * defaultLTV) / FIXED_POINT_SCALAR;
-            uint256 liquidationAmount = collateral - newCollateral;
-            uint256 newDebt = debt - liquidationAmount;
+            uint256 updatedCollateralInUnderlying = (collateralInUnderlying * defaultLTV) / FIXED_POINT_SCALAR;
+            uint256 liquidationAmount = collateralInUnderlying - updatedCollateralInUnderlying;
+            uint256 updatedDebt = debt - liquidationAmount;
+            uint256 feeInUnderlying;
 
             if (liquidationAmount > 0) {
-                fee = liquidationAmount * liquidatorFee / 10_000;
-                newCollateral -= fee;
+                feeInUnderlying = liquidationAmount * liquidatorFee / 10_000;
+                updatedCollateralInUnderlying -= feeInUnderlying;
                 assets = liquidationAmount;
             }
 
-            uint256 yieldTokenCollateral = convertUnderlyingToYieldTokens(newCollateral);
+            uint256 updatedCollateral = convertUnderlyingToYieldTokens(updatedCollateralInUnderlying);
+            uint256 liquidationAmountMinusFee = convertUnderlyingToYieldTokens(liquidationAmount - feeInUnderlying);
+            fee = convertUnderlyingToYieldTokens(feeInUnderlying);
+
+            // send liquidation amount - any fee to the transmuter. the transmuter only accepts yield tokens
+            TokenUtils.safeTransferFrom(yieldToken, address(this), transmuter, liquidationAmountMinusFee);
 
             // update user debt
-            _accounts[owner].debt = newDebt;
+            _accounts[owner].debt = updatedDebt;
 
             // update user balance
-            _accounts[owner].collateralBalance = yieldTokenCollateral;
+            _accounts[owner].collateralBalance = updatedCollateral;
 
             if (fee > 0) {
                 // TODO fix next line (placeholder using first token in array)
