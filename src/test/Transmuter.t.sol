@@ -5,7 +5,9 @@ import {Test} from "../../../lib/forge-std/src/Test.sol";
 import {StdCheats} from "../../../lib/forge-std/src/StdCheats.sol";
 
 import {AlEth} from "../external/AlETH.sol";
-import {Transmuter, InitializationParams} from "../Transmuter.sol";
+import {Transmuter} from "../Transmuter.sol";
+
+import "../interfaces/ITransmuter.sol";
 
 import {ITransmuter} from "../interfaces/ITransmuter.sol";
 
@@ -22,7 +24,7 @@ contract TransmuterTest is Test {
         collateralToken = new AlEth();
         underlyingToken = new AlEth();
 
-        transmuter = new Transmuter(ITransmuter.InitializationParams(address(alETH), 5_256_000));
+        transmuter = new Transmuter(ITransmuter.InitializationParams(address(alETH), 5_256_000, 0, 0));
 
         transmuter.addAlchemist(alchemist);
 
@@ -76,14 +78,6 @@ contract TransmuterTest is Test {
         assertEq(transmuter.timeToTransmute(), 20 days);
     }
 
-    function testSweepTokens() public {
-        deal(address(alETH), address(transmuter), 100e18);
-
-        transmuter.sweepTokens();
-
-        assertEq(alETH.balanceOf(address(this)), 100e18);
-    }
-
     // TODO: Update once create redemption is modified
     function testCreateRedemption() public {
         vm.prank(address(0xbeef));
@@ -100,6 +94,7 @@ contract TransmuterTest is Test {
     // TODO: Update once create redemption is modified
     function testFuzzCreateRedemption(uint256 amount) public {
         vm.assume(amount > 0);
+        vm.assume(amount < uint256(type(int256).max));
 
         vm.prank(address(0xbeef));
         transmuter.createRedemption(alchemist, address(0xadbc), amount);
@@ -136,6 +131,7 @@ contract TransmuterTest is Test {
 
     function testFuzzClaimRedemption(uint256 amount) public {
         vm.assume(amount > 0);
+        vm.assume(amount < uint256(type(int256).max));
 
         vm.prank(address(0xbeef));
         transmuter.createRedemption(alchemist, address(underlyingToken), amount);

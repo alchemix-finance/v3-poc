@@ -10,12 +10,13 @@ import {AlEth} from "../external/AlETH.sol";
 import {AlchemistV3} from "../AlchemistV3.sol";
 import {AlchemicTokenV3} from "../AlchemicTokenV3.sol";
 import {AlchemistHandler} from "./handlers/AlchemistHandler.sol";
-import {Transmuter, InitializationParams} from "../Transmuter.sol";
+import {Transmuter} from "../Transmuter.sol";
 import {TransmuterBuffer} from "../TransmuterBuffer.sol";
 import {TransmuterHandler} from "./handlers/Transmuterhandler.sol";
 import {Whitelist} from "../utils/Whitelist.sol";
 
-import {IAlchemistV3} from "../interfaces/IAlchemistV3.sol";
+import {IAlchemistV3, InitializationParams} from "../interfaces/IAlchemistV3.sol";
+import {ITransmuter} from "../interfaces/ITransmuter.sol";
 
 import {SafeERC20} from "../libraries/SafeERC20.sol";
 import {ITransmuter} from "../interfaces/ITransmuter.sol";
@@ -65,8 +66,8 @@ contract InvariantTests is Test {
 
     mapping(address => bool) users;
 
-    // LTV
-    uint256 public LTV = 9 * 1e17; // .9
+    // minimumCollateralization
+    uint256 public minimumCollateralization = 9 * 1e17; // .9
 
     uint256 public constant FIXED_POINT_SCALAR = 1e18;
 
@@ -119,16 +120,16 @@ contract InvariantTests is Test {
         // bytes memory transParams = abi.encodeWithSelector(Transmuter.initialize.selector, address(alToken), fakeUnderlyingToken);
 
         // proxyTransmuter = new TransparentUpgradeableProxy(address(transmuterLogic), proxyOwner, transParams);
-        transmuter = new Transmuter(ITransmuter.InitializationParams(address(alToken), 30 days));
+        transmuter = new Transmuter(ITransmuter.InitializationParams(address(alToken), 30 days, 0, 0));
 
         // AlchemistV3 proxy
-        IAlchemistV3.InitializationParams memory params = IAlchemistV3.InitializationParams({
+        InitializationParams memory params = InitializationParams({
             admin: alOwner,
             yieldToken: fakeYieldToken,
             debtToken: address(alToken),
             underlyingToken: address(fakeUnderlyingToken),
             transmuter: address(transmuter),
-            LTV: LTV,
+            minimumCollateralization: minimumCollateralization,
             protocolFee: 1000,
             protocolFeeReceiver: address(10),
             liquidatorFee: 10e16, // Lets say 10% of liquidation amount?

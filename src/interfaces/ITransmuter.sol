@@ -28,9 +28,117 @@ interface ITransmuter {
         uint256 positionMaturationBlock;
     }
 
-    // TODO: Fill this in with functions events and full comments:)
+    struct InitializationParams {
+        address syntheticToken;
+        uint256 timeToTransmute;
+        uint256 transmutationFee;
+        uint256 exitFee;
+    }
 
-    function queryGraph(uint256 startBlock, uint256 endBlock) external view returns (uint256);
+    /// @notice Gets the address of the admin.
+    ///
+    /// @return admin The admin address.
+    function admin() external view returns (address admin);
+
+    /// @notice Returns the version of the alchemist.
+    function version() external view returns (string memory version);
+
+    /// @notice Returns the address of the synthetic token.
+    function syntheticToken() external view returns (address token);
+
+    /// @notice Returns the transmutation early exit fee.
+    /// @notice This is for users who choose to pull from the transmuter before their position has fully matured.
+    function exitFee() external view returns (uint256 fee);
+
+    /// @notice Returns the transmutation fee.
+    /// @notice This fee affects all claims.
+    function transmutationFee() external view returns (uint256 fee);
+
+    /// @notice Returns the current time to transmute (in blocks).
+    function timeToTransmute() external view returns (uint256 transmutationTime);
+
+    /// @notice Returns the total locked debt tokens in the transmuter.
+    function totalLocked() external view returns (uint256 totalLocked);
+
+    /// @notice Returns array of alchemists.
+    function alchemists(uint256) external view returns (address alchemist);
+
+    function protocolFeeReceiver() external view returns (address receiver);
+
+    /// @notice Adds `alchemist` address to list of active alchemists.
+    ///
+    /// @notice `alchemist` must not have been previously added.
+    ///
+    /// @param alchemist    The address to add.
+    function addAlchemist(address alchemist) external;
+
+    /// @notice Removes `alchemist` address to list of active alchemists.
+    ///
+    /// @notice `alchemist` must have been previously added.
+    ///
+    /// @param alchemist    The address to remove.
+    function removeAlchemist(address alchemist) external;
+
+    /// @notice Sets time to transmute to `time`.
+    ///
+    /// @param time    The new transmutation time.
+    function setTransmutationTime(uint256 time) external;
+
+    /// @notice Sets the transmutation fee to `fee`.
+    ///
+    /// @param fee    The new transmutation fee.
+    function setTransmutationFee(uint256 fee) external;
+
+    /// @notice Sets the early exit fee to `fee`.
+    ///
+    /// @param fee    The new exit fee.
+    function setExitFee(uint256 fee) external;
+
+    /// @notice Gets entry data for `alchemist`.
+    ///
+    /// @param alchemist    Address of the alchemist to query.
+    ///
+    /// @return index   Index of `alchemist` in the list of alchemists.
+    /// @return active  Status of `alchemist` activation.
+    function alchemistEntries(address alchemist) external view returns (uint256 index, bool active);
+
+    /// @notice Gets position info for `account`.
+    ///
+    /// @param account  Account address to query
+    /// @param ids      Array of position Ids to query
+    ///
+    /// @return positions   Array of position data.
+    function getPositions(address account, uint256[] calldata ids) external view returns (StakingPosition[] memory positions);
+
+    /// @notice Creates a new staking position in the transmuter.
+    ///
+    /// @notice `depositAmount` must be non-zero or this call will revert with a {DepositZeroAmount} error.
+    /// @notice `alchemist` must be registered in the transmuter or this call will revert with a {NotRegisteredAlchemist} error.
+    ///
+    /// @notice Emits a {PositionCreated} event.
+    ///
+    /// @param alchemist        Alchemist deployment to pull funds from.
+    /// @param underlying       Address of the underlying token to receive during the transmutation.
+    /// @param depositAmount    Amount of debt tokens to deposit.
+    function createRedemption(address alchemist, address underlying, uint256 depositAmount) external;
+
+    /// @notice Claims a staking position from the transmuter.
+    ///
+    /// @notice `id` must return a valid position or this call will revert with a {PositionNotFound} error.
+    /// @notice End block of position must be <= to current block or this call will revert with a {PrematureClaim} error.
+    ///
+    /// @notice Emits a {PositionClaimed} event.
+    ///
+    /// @param id   Id of the nft representing the position.
+    function claimRedemption(uint256 id) external;
+
+    /// @notice Queries the staking graph from `startBlock` to `endBlock`.
+    ///
+    /// @param startBlock   The block to start query from.
+    /// @param endBlock     The last block to query up to.
+    ///
+    /// @return totalValue  Total value of tokens needed to fulfill redemptions between `startBlock` and `endBlock`.
+    function queryGraph(uint256 startBlock, uint256 endBlock) external view returns (uint256 totalValue);
 
     /// @notice Emitted when the admin address is updated.
     ///
@@ -52,9 +160,13 @@ interface ITransmuter {
     /// @param amountClaimed    The amount of tokens claimed.
     event PositionClaimed(address indexed claimer, address indexed alchemist, uint256 amountClaimed);
 
-    /// @dev Emitted when redemption rate is updated through claim or stake.
+    /// @dev Emitted when the transmutaiton fee is updated.
     ///
-    /// @param timestamp        The time at which redemption rate was changed.
-    /// @param rate             The new rate (BPS per year).
-    event RedemptionRateUpdated(uint256 timestamp, uint256 rate);
+    /// @param fee  The new transmutation fee.
+    event TransmutationFeeUpdated(uint256 fee);
+
+    /// @dev Emitted when the early exit fee is updated.
+    ///
+    /// @param fee  The new exit fee.
+    event ExitFeeUpdated(uint256 fee);
 }
