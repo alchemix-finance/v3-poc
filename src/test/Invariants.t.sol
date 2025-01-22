@@ -14,12 +14,14 @@ import {Transmuter} from "../Transmuter.sol";
 import {TransmuterBuffer} from "../TransmuterBuffer.sol";
 import {TransmuterHandler} from "./handlers/Transmuterhandler.sol";
 import {Whitelist} from "../utils/Whitelist.sol";
-
-import {IAlchemistV3, InitializationParams} from "../interfaces/IAlchemistV3.sol";
+import {IAlchemistV3, IAlchemistV3State} from "../interfaces/IAlchemistV3.sol";
 import {ITransmuter} from "../interfaces/ITransmuter.sol";
-
 import {SafeERC20} from "../libraries/SafeERC20.sol";
 import {ITransmuter} from "../interfaces/ITransmuter.sol";
+
+import "../interfaces/IYearnVaultV2.sol";
+import "../interfaces/ITokenAdapter.sol";
+import "../adapters/YearnTokenAdapter.sol";
 
 contract InvariantTests is Test {
     AlchemistHandler public alchemistHandler;
@@ -54,6 +56,9 @@ contract InvariantTests is Test {
 
     // Total debt burned
     uint256 public burned;
+
+    // Token adapter
+    ITokenAdapter tokenAdapter;
 
     // Total tokens sent to transmuter
     uint256 public sentToTransmuter;
@@ -115,6 +120,9 @@ contract InvariantTests is Test {
         alchemistHandler = new AlchemistHandler(alchemist);
         transmuterHandler = new TransmuterHandler(transmuter);
 
+        // place holder
+        tokenAdapter = new YearnTokenAdapter(fakeYieldToken, fakeUnderlyingToken);
+
         // TODO make intitializeable transmuter
         // TransmuterV3 proxy
         // bytes memory transParams = abi.encodeWithSelector(Transmuter.initialize.selector, address(alToken), fakeUnderlyingToken);
@@ -123,12 +131,14 @@ contract InvariantTests is Test {
         transmuter = new Transmuter(ITransmuter.InitializationParams(address(alToken), 30 days, 0, 0));
 
         // AlchemistV3 proxy
-        InitializationParams memory params = InitializationParams({
+        IAlchemistV3State.InitializationParams memory params = IAlchemistV3State.InitializationParams({
             admin: alOwner,
             yieldToken: fakeYieldToken,
             debtToken: address(alToken),
             underlyingToken: address(fakeUnderlyingToken),
+            adapter: address(tokenAdapter),
             transmuter: address(transmuter),
+            LTV: 9e17,
             minimumCollateralization: minimumCollateralization,
             protocolFee: 1000,
             protocolFeeReceiver: address(10),

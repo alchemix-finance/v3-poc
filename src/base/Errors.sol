@@ -18,3 +18,9 @@ error InsufficientAllowance();
 
 /// @notice An error used to indicate that the function input data is missing
 error MissingInputData();
+
+/// @notice An error which is used to indicate that an operation failed because an account became undercollateralized.
+error Undercollateralized();
+
+/// @notice An error which is used to indicate that a liquidate operation failed because an account is sufficiaenly collateralized.
+error LiquidationError();

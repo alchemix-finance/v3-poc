@@ -1,53 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-/// @notice Contract initialization parameters.
-struct InitializationParams {
-    // The initial admin account.
-    address admin;
-    // The ERC20 token used to represent debt. i.e. the alAsset.
-    address debtToken;
-    // The ERC20 token used to represent the underlying token of the yield token.
-    address underlyingToken;
-    // The address(es) of the yield token(s) being deposited.
-    address yieldToken;
-    // The minimum collateralization between 0 and 1 exclusive
-    uint256 minimumCollateralization;
-    // The initial transmuter or transmuter buffer.
-    address transmuter;
-    // TODO Need to discuss how fees will be accumulated since harvests will no longer be done.
-    uint256 protocolFee;
-    // The address that receives liquidator fees.
-    uint256 liquidatorFee;
-    // The address that receives protocol fees.
-    address protocolFeeReceiver;
-    // A limit used to prevent administrators from making minting functionality inoperable.
-    uint256 mintingLimitMinimum;
-    // The maximum number of tokens that can be minted per period of time.
-    uint256 mintingLimitMaximum;
-    // The number of blocks that it takes for the minting limit to be refreshed.
-    uint256 mintingLimitBlocks;
-}
-
-/// @notice A user account.
-/// @notice This account struct is included in the main contract, AlchemistV3.sol, to aid readability.
-struct Account {
-    /// @notice User's debt
-    uint256 debt;
-    /// @notice User's collateral.
-    uint256 collateralBalance;
-    /// @notice User debt earmarked for redemption.
-    uint256 earmarked;
-    /// @notice Last weight of debt from most recent account sync.
-    uint256 lastAccruedEarmarkWeight;
-    /// @notice Last weight of debt from most recent account sync.
-    uint256 lastAccruedRedemptionWeight;
-    /// @notice allowances for minting alAssets
-    mapping(address => uint256) mintAllowances;
-    /// @notice Last LTV recorded from User's last mint
-    uint256 defaultLTV;
-}
-
 interface IAlchemistV3Actions {
     /// @notice Approve `spender` to mint `amount` debt tokens.
     ///
@@ -196,14 +149,30 @@ interface IAlchemistV3Actions {
     ///
     /// @notice **Example:**
     /// @notice ```
-    /// @notice AlchemistV2(alchemistAddress).liquidate(user);
+    /// @notice AlchemistV3(alchemistAddress).liquidate(user);
     /// @notice ```
     ///
     /// @param owner    The address account to liquidate.
     ///
-    /// @return underlyingAmount    Underlying tokens sent to the transmuter.
-    /// @return fee                 Underlying tokens sent to the liquidator.
+    /// @return underlyingAmount   Equivalent amount of underlying tokens in yield tokens sent to the transmuter.
+    /// @return fee                Amount sent to liquidator in yield tokens.
     function liquidate(address owner) external returns (uint256 underlyingAmount, uint256 fee);
+
+    /// @notice Liquidates `owners` if the debt for account `owner` is greater than the underlying value of their collateral * LTV.
+    ///
+    /// @notice `owner` must be non-zero or this call will revert with an {IllegalArgument} error.
+    ///
+    ///
+    /// @notice **Example:**
+    /// @notice ```
+    /// @notice AlchemistV3(alchemistAddress).batchLiquidate([user1, user2]);
+    /// @notice ```
+    ///
+    /// @param owners    The address accounts to liquidate.
+    ///
+    /// @return totalAmountLiquidated    Equivalent amount of underlying tokens in yield tokens sent to the transmuter.
+    /// @return totalFees                Amount sent to liquidator in yield tokens.
+    function batchLiquidate(address[] memory owners) external returns (uint256 totalAmountLiquidated, uint256 totalFees);
 
     /// @notice Redeems `amount` debt from the alchemist in exchange for underlying tokens sent to the transmuter.
     ///
@@ -216,6 +185,15 @@ interface IAlchemistV3Actions {
 }
 
 interface IAlchemistV3AdminActions {
+    /// @notice Sets 'newLTV' the max loan to value ratio.
+    ///
+    /// @notice `msg.sender` must be the admin or this call will will revert with an {Unauthorized} error.
+    ///
+    /// @notice Emits an event.
+    ///
+    /// @param newLTV ltv between 0 and 1 exclusive
+    function setMaxLoanToValue(uint256 newLTV) external;
+
     /// @notice Sets the pending administrator.
     ///
     /// @notice `msg.sender` must be the admin or this call will will revert with an {Unauthorized} error.
@@ -371,6 +349,57 @@ interface IAlchemistV3Immutables {
 }
 
 interface IAlchemistV3State {
+    /// @notice Contract initialization parameters.
+    struct InitializationParams {
+        // The initial admin account.
+        address admin;
+        // The max loan to value ratio
+        uint256 LTV;
+        // The ERC20 token used to represent debt. i.e. the alAsset.
+        address debtToken;
+        // The ERC20 token used to represent the underlying token of the yield token.
+        address underlyingToken;
+        // The token adapter used to retrieve the price between the yield and underlying tokens
+        address adapter;
+        // The address(es) of the yield token(s) being deposited.
+        address yieldToken;
+        // The minimum collateralization between 0 and 1 exclusive
+        uint256 minimumCollateralization;
+        // The initial transmuter or transmuter buffer.
+        address transmuter;
+        // TODO Need to discuss how fees will be accumulated since harvests will no longer be done.
+        uint256 protocolFee;
+        // The address that receives liquidator fees.
+        uint256 liquidatorFee;
+        // The address that receives protocol fees.
+        address protocolFeeReceiver;
+        // A limit used to prevent administrators from making minting functionality inoperable.
+        uint256 mintingLimitMinimum;
+        // The maximum number of tokens that can be minted per period of time.
+        uint256 mintingLimitMaximum;
+        // The number of blocks that it takes for the minting limit to be refreshed.
+        uint256 mintingLimitBlocks;
+    }
+
+    /// @notice A user account.
+    /// @notice This account struct is included in the main contract, AlchemistV3.sol, to aid readability.
+    struct Account {
+        /// @notice User's debt
+        uint256 debt;
+        /// @notice User's collateral.
+        uint256 collateralBalance;
+        /// @notice User debt earmarked for redemption.
+        uint256 earmarked;
+        /// @notice Last weight of debt from most recent account sync.
+        uint256 lastAccruedEarmarkWeight;
+        /// @notice Last weight of debt from most recent account sync.
+        uint256 lastAccruedRedemptionWeight;
+        /// @notice allowances for minting alAssets
+        mapping(address => uint256) mintAllowances;
+        /// @notice Last LTV recorded from User's last mint
+        uint256 defaultLTV;
+    }
+
     /// @notice Gets the address of the admin.
     ///
     /// @return admin The admin address.

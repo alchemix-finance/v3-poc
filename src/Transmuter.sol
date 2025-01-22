@@ -74,23 +74,28 @@ contract Transmuter is ITransmuter, ITransmuterErrors, ERC1155 {
         timeToTransmute = params.timeToTransmute;
         transmutationFee = params.transmutationFee;
         exitFee = params.exitFee;
+
+        // default for now
+        admin = msg.sender;
     }
 
     /// @inheritdoc ITransmuter
     function addAlchemist(address alchemist) external onlyAdmin {
-        if(_alchemistEntries[alchemist].isActive == true) 
+        if (_alchemistEntries[alchemist].isActive == true) {
             revert AlchemistDuplicateEntry();
+        }
 
         alchemists.push(alchemist);
-        _alchemistEntries[alchemist] = AlchemistEntry(alchemists.length-1, true);
+        _alchemistEntries[alchemist] = AlchemistEntry(alchemists.length - 1, true);
     }
 
     /// @inheritdoc ITransmuter
     function removeAlchemist(address alchemist) external onlyAdmin {
-        if(_alchemistEntries[alchemist].isActive == false) 
+        if (_alchemistEntries[alchemist].isActive == false) {
             revert NotRegisteredAlchemist();
+        }
 
-        alchemists[_alchemistEntries[alchemist].index] = alchemists[alchemists.length-1];
+        alchemists[_alchemistEntries[alchemist].index] = alchemists[alchemists.length - 1];
         alchemists.pop();
         delete _alchemistEntries[alchemist];
     }
@@ -124,7 +129,7 @@ contract Transmuter is ITransmuter, ITransmuterErrors, ERC1155 {
     }
 
     /// @inheritdoc ITransmuter
-    function getPositions(address account, uint256[] calldata ids) external view returns(StakingPosition[] memory) {
+    function getPositions(address account, uint256[] calldata ids) external view returns (StakingPosition[] memory) {
         StakingPosition[] memory userPositions = new StakingPosition[](ids.length);
 
         for (uint256 i = 0; i < ids.length; i++) {
@@ -136,18 +141,15 @@ contract Transmuter is ITransmuter, ITransmuterErrors, ERC1155 {
 
     /// @inheritdoc ITransmuter
     function createRedemption(address alchemist, address underlying, uint256 depositAmount) external {
-        if(depositAmount == 0)
+        if (depositAmount == 0) {
             revert DepositZeroAmount();
+        }
 
-        if(_alchemistEntries[alchemist].isActive == false)
+        if (_alchemistEntries[alchemist].isActive == false) {
             revert NotRegisteredAlchemist();
+        }
 
-        TokenUtils.safeTransferFrom(
-            syntheticToken,
-            msg.sender,
-            address(this),
-            depositAmount
-        );
+        TokenUtils.safeTransferFrom(syntheticToken, msg.sender, address(this), depositAmount);
 
         // TODO: Add `data` param if we decide we need this. ERC1155
         _mint(msg.sender, ++_nonce, depositAmount, "");
@@ -155,8 +157,8 @@ contract Transmuter is ITransmuter, ITransmuterErrors, ERC1155 {
         _positions[msg.sender][_nonce] = StakingPosition(alchemist, underlying, depositAmount, block.number + timeToTransmute);
 
         // Update Fenwick Tree
-        _graph.updateStakingGraph(depositAmount.toInt256()/ timeToTransmute.toInt256(), timeToTransmute);
-        
+        _graph.updateStakingGraph(depositAmount.toInt256() / timeToTransmute.toInt256(), timeToTransmute);
+
         emit PositionCreated(msg.sender, alchemist, depositAmount, _nonce);
     }
 
@@ -165,11 +167,12 @@ contract Transmuter is ITransmuter, ITransmuterErrors, ERC1155 {
         // TODO: Potentially add allowances for other addresses
         StakingPosition storage position = _positions[msg.sender][id];
 
-        if(position.positionMaturationBlock == 0)
+        if (position.positionMaturationBlock == 0) {
             revert PositionNotFound();
+        }
 
         // TODO: Gas optimize. Possible make internal function.
-        uint256 blocksLeft = position.positionMaturationBlock > block.number ? position.positionMaturationBlock - block.number: 0;
+        uint256 blocksLeft = position.positionMaturationBlock > block.number ? position.positionMaturationBlock - block.number : 0;
         uint256 amountEarly = blocksLeft > 0 ? position.amount * blocksLeft / timeToTransmute : 0;
         uint256 amountMatured = position.amount - amountEarly;
 

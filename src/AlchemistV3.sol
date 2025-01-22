@@ -71,11 +71,16 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     /// @inheritdoc IAlchemistV3State
     address public pendingAdmin;
 
+    // Array matches LTV to the yield token of the same index
+    uint256 public LTV;
+
     uint256 private _earmarkWeight;
 
     uint256 private _redemptionWeight;
 
     uint256 public liquidatorFee;
+
+    address private adapter;
 
     mapping(address => Account) private _accounts;
 
@@ -92,22 +97,6 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     }
 
     constructor() initializer {}
-
-    function initialize(InitializationParams memory params) external initializer {
-        _checkArgument(params.protocolFee <= BPS);
-        debtToken = params.debtToken;
-        underlyingToken = params.underlyingToken;
-        underlyingDecimals = TokenUtils.expectDecimals(params.underlyingToken);
-        underlyingConversionFactor = 10 ** (TokenUtils.expectDecimals(params.debtToken) - TokenUtils.expectDecimals(params.underlyingToken));
-        yieldToken = params.yieldToken;
-        minimumCollateralization = params.minimumCollateralization;
-        admin = params.admin;
-        transmuter = params.transmuter;
-        protocolFee = params.protocolFee;
-        protocolFeeReceiver = params.protocolFeeReceiver;
-        lastEarmarkBlock = block.number;
-        _mintingLimiter = Limiters.createLinearGrowthLimiter(params.mintingLimitMaximum, params.mintingLimitBlocks, params.mintingLimitMinimum);
-    }
 
     /// @inheritdoc IAlchemistV3AdminActions
     function setPendingAdmin(address value) external onlyAdmin {
@@ -199,6 +188,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         debtToken = params.debtToken;
         underlyingToken = params.underlyingToken;
         underlyingDecimals = TokenUtils.expectDecimals(params.underlyingToken);
+        adapter = params.adapter;
         underlyingConversionFactor = 10 ** (TokenUtils.expectDecimals(params.debtToken) - TokenUtils.expectDecimals(params.underlyingToken));
         yieldToken = params.yieldToken;
         LTV = params.LTV;
@@ -212,7 +202,6 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         TokenUtils.safeApprove(yieldToken, address(this), type(uint256).max);
     }
 
-    /// @inheritdoc IAlchemistV3
     function setMaxLoanToValue(uint256 newLTV) external override onlyAdmin {
         _checkArgument(newLTV > 0 && newLTV < 1e18);
         LTV = newLTV;
@@ -386,17 +375,18 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         return actualEarmarkPayment + actualCredit;
     }
 
-    /// @inheritdoc IAlchemistV3
-    function liquidate(address owner) external override returns (uint256 assets, uint256 fee) {
-        (assets, fee) = _liquidate(owner);
-        if (assets > 0) {
-            return (assets, fee);
+    /// @inheritdoc IAlchemistV3Actions
+    function liquidate(address owner) external override returns (uint256 underlyingAmount, uint256 fee) {
+        (underlyingAmount, fee) = _liquidate(owner);
+        if (underlyingAmount > 0) {
+            return (underlyingAmount, fee);
         } else {
             // no liquidation amount returned, so no liquidation happened
             revert LiquidationError();
         }
     }
 
+    /// @inheritdoc IAlchemistV3Actions
     function batchLiquidate(address[] memory owners) external returns (uint256 totalAmountLiquidated, uint256 totalFees) {
         if (owners.length == 0) {
             revert MissingInputData();
@@ -404,8 +394,8 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
         for (uint256 i = 0; i < owners.length; i++) {
             address owner = owners[i];
-            (uint256 assets, uint256 fee) = _liquidate(owner);
-            totalAmountLiquidated += assets;
+            (uint256 underlyingAmount, uint256 fee) = _liquidate(owner);
+            totalAmountLiquidated += underlyingAmount;
             totalFees += fee;
         }
 
@@ -417,7 +407,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         }
     }
 
-    function _liquidate(address owner) internal returns (uint256 assets, uint256 fee) {
+    function _liquidate(address owner) internal returns (uint256 underlyingAmount, uint256 fee) {
         // Sync current user debt before liquidation
         _sync(owner);
         uint256 debt = _accounts[owner].debt;
@@ -450,7 +440,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
             if (liquidationAmount > 0) {
                 feeInUnderlying = liquidationAmount * liquidatorFee / 10_000;
                 updatedCollateralInUnderlying -= feeInUnderlying;
-                assets = liquidationAmount;
+                underlyingAmount = liquidationAmount;
             }
 
             uint256 updatedCollateral = convertUnderlyingToYieldTokens(updatedCollateralInUnderlying);
@@ -472,7 +462,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
                 TokenUtils.safeTransfer(yieldToken, msg.sender, fee);
             }
         }
-        return (assets, fee);
+        return (underlyingAmount, fee);
     }
 
     /// @inheritdoc IAlchemistV3Actions
@@ -509,7 +499,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     /// @param amount   The amount to convert.
     function convertUnderlyingToYieldTokens(uint256 amount) public view returns (uint256) {
         uint8 decimals = TokenUtils.expectDecimals(yieldToken);
-        return (amount * (10 ** decimals)) / IYearnVaultV2(yieldToken).pricePerShare();
+        return (amount * (10 ** decimals)) / ITokenAdapter(adapter).price();
     }
 
     /// @dev Normalizes underlying tokens to debt tokens.
@@ -519,7 +509,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     /// @inheritdoc IAlchemistV3State
     function convertYieldTokensToUnderlying(uint256 amount) public view returns (uint256) {
         uint8 decimals = TokenUtils.expectDecimals(yieldToken);
-        return (amount * ITokenAdapter(yieldToken).price()) / 10 ** decimals;
+        return (amount * ITokenAdapter(adapter).price()) / 10 ** decimals;
     }
 
     /// @inheritdoc IAlchemistV3State
@@ -629,6 +619,10 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     ///
     /// @return The amount of debt that the account owned by `owner` will have after an update.
     function _calculateUnrealizedDebt(address owner) internal view returns (uint256) {
+        if (totalDebt == 0) {
+            return 0;
+        }
+
         Account storage account = _accounts[owner];
 
         uint256 amount = ITransmuter(transmuter).queryGraph(lastEarmarkBlock + 1, block.number);
@@ -645,8 +639,8 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         uint256 debt = _accounts[owner].debt;
         if (debt == 0) return false;
 
-        uint256 collateralization = totalValue(owner) * FIXED_POINT_SCALAR / debt;
-        if (collateralization < minimumCollateralization) {
+        uint256 collateralization = (totalValue(owner) * LTV) / FIXED_POINT_SCALAR;
+        if (collateralization < debt) {
             return true;
         }
         return false;

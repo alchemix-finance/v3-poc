@@ -2,11 +2,6 @@
 pragma solidity ^0.8.26;
 
 interface ITransmuter {
-    struct InitializationParams {
-        address syntheticToken;
-        uint256 timeToTransmute;
-    }
-
     struct AlchemistEntry {
         // TODO: Add other necessary alchemist data here
         uint256 index;

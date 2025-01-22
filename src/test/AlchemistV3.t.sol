@@ -14,15 +14,15 @@ import {TransmuterBuffer} from "../TransmuterBuffer.sol";
 import {Whitelist} from "../utils/Whitelist.sol";
 import {TestERC20} from "./mocks/TestERC20.sol";
 import {TestYieldToken} from "./mocks/TestYieldToken.sol";
-import {IAlchemistV3} from "../interfaces/IAlchemistV3.sol";
+import {IAlchemistV3, IAlchemistV3State} from "../interfaces/IAlchemistV3.sol";
 import {ITransmuter} from "../interfaces/ITransmuter.sol";
 import {ITestYieldToken} from "../interfaces/test/ITestYieldToken.sol";
-import {InsufficientAllowance} from "../base/Errors.sol";
+import {InsufficientAllowance, LiquidationError, Undercollateralized} from "../base/Errors.sol";
 import "../interfaces/IYearnVaultV2.sol";
+import "../interfaces/ITokenAdapter.sol";
+import "../adapters/YearnTokenAdapter.sol";
 
-import "../interfaces/IAlchemistV3Errors.sol";
-
-contract AlchemistV3Test is Test, IAlchemistV3Errors {
+contract AlchemistV3Test is Test {
     // ----- [SETUP] Variables for setting up a minimal CDP -----
 
     // Callable contract variables
@@ -48,6 +48,9 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
     address fakeYieldToken;
     IERC20 constant dai = IERC20(0x6B175474E89094C44Da98b954EedeAC495271d0F);
     IERC20 constant yvDai = IERC20(0xdA816459F1AB5631232FE5e97a05BBBb94970c95);
+
+    // Token adapter
+    ITokenAdapter tokenAdapter;
 
     AlchemicTokenV3 public collateralToken;
     AlchemicTokenV3 public underlyingToken;
@@ -111,6 +114,9 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         fakeUnderlyingToken = address(dai);
         fakeYieldToken = address(yvDai);
 
+        // testing with yearn
+        tokenAdapter = new YearnTokenAdapter(fakeYieldToken, fakeUnderlyingToken);
+
         // Contracts and logic contracts
         alOwner = admin;
         alToken = new AlchemicTokenV3(_name, _symbol, _flashFee);
@@ -120,16 +126,18 @@ contract AlchemistV3Test is Test, IAlchemistV3Errors {
         whitelist = new Whitelist();
 
         // AlToken Transmuter
-        transmuter = new Transmuter(ITransmuter.InitializationParams(address(alToken), 5_256_000));
+        transmuter = new Transmuter(ITransmuter.InitializationParams(address(alToken), 5_256_000, 0, 0));
 
         // AlchemistV3 proxy
-        IAlchemistV3.InitializationParams memory params = IAlchemistV3.InitializationParams({
+        IAlchemistV3State.InitializationParams memory params = IAlchemistV3State.InitializationParams({
             admin: alOwner,
             yieldToken: address(fakeYieldToken),
             debtToken: address(alToken),
             underlyingToken: address(fakeUnderlyingToken),
+            adapter: address(tokenAdapter),
             transmuter: address(transmuter),
             LTV: LTV,
+            minimumCollateralization: 1e17,
             protocolFee: 1000,
             protocolFeeReceiver: address(10),
             liquidatorFee: 1000, // Lets say 10% of liquidation amount?
