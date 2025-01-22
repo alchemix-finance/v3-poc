@@ -142,7 +142,7 @@ contract InvariantTests is Test {
             minimumCollateralization: minimumCollateralization,
             protocolFee: 1000,
             protocolFeeReceiver: address(10),
-            liquidatorFee: 10e16, // Lets say 10% of liquidation amount?
+            liquidatorFee: 1000, // in bps?
             mintingLimitMinimum: 1,
             mintingLimitMaximum: uint256(type(uint160).max),
             mintingLimitBlocks: 300

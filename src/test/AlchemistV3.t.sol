@@ -140,7 +140,7 @@ contract AlchemistV3Test is Test {
             minimumCollateralization: 1e17,
             protocolFee: 1000,
             protocolFeeReceiver: address(10),
-            liquidatorFee: 1000, // Lets say 10% of liquidation amount?
+            liquidatorFee: 1000, // in bps?
             mintingLimitMinimum: 1,
             mintingLimitMaximum: uint256(type(uint160).max),
             mintingLimitBlocks: 300
