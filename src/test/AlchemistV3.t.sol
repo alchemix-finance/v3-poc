@@ -338,7 +338,7 @@ contract AlchemistV3Test is Test {
         // ensure initial debt is correct
         vm.assertApproxEqAbs(prevDebt, 2_037_939_937_056_352_938_600_000_000, minimumDepositOrWithdrawalLoss);
 
-        // Now altering the yield tokens price (on the dai Yearn Vault) in underyling by artificially inflating the token supply from  1.54e25 to (1.54e25 + 1.54e26/7.3)
+        // Now altering the yield tokens price (on the dai Yearn Vault) in underyling by artificially inflating the token supply
         // see https://etherscan.io/address/0xdA816459F1AB5631232FE5e97a05BBBb94970c95#code
         // Line 915, increase self.totalSupply with everything else being equal to decrease the share price
         uint256 initialVaultSupply = IYearnVaultV2(address(fakeYieldToken)).totalSupply();
@@ -399,7 +399,7 @@ contract AlchemistV3Test is Test {
         alchemist.mint((alchemist.totalValue(anotherExternalUser) * LTV) / FIXED_POINT_SCALAR, anotherExternalUser);
         vm.stopPrank();
 
-        // Now altering the yield tokens price (on the dai Yearn Vault) in underyling by artificially inflating the token supply from  1.54e25 to (1.54e25 + 1.54e26/7.3)
+        // Now altering the yield tokens price (on the dai Yearn Vault) in underyling by artificially inflating the token supply
         // see https://etherscan.io/address/0xdA816459F1AB5631232FE5e97a05BBBb94970c95#code
         // Line 915, increase self.totalSupply with everything else being equal to decrease the share price
         uint256 initialVaultSupply = IYearnVaultV2(address(fakeYieldToken)).totalSupply();
