@@ -413,9 +413,9 @@ interface IAlchemistV3State {
 
     function protocolFee() external view returns (uint256 fee);
 
-    function underlyingDecimals() external view returns (uint256 decimals);
+    function underlyingDecimals() external view returns (uint8 decimals);
 
-    function underlyingConversionFactor() external view returns (uint256 factor);
+    function underlyingConversionFactor() external view returns (uint8 factor);
 
     function protocolFeeReceiver() external view returns (address receiver);
 
@@ -451,6 +451,16 @@ interface IAlchemistV3State {
     ///
     /// @param amount   The amount to convert.
     function convertYieldTokensToUnderlying(uint256 amount) external view returns (uint256);
+
+    /// @dev Returns the yield token value of `amount` debt tokens.
+    ///
+    /// @param amount   The amount to convert.
+    function convertDebtTokensToYield(uint256 amount) external view returns (uint256);
+
+    /// @dev Returns the yield token value of `amount` underlying tokens.
+    ///
+    /// @param amount   The amount to convert.
+    function convertUnderlyingTokensToYield(uint256 amount) external view returns (uint256);
 
     /// @dev Normalizes underlying tokens to debt tokens.
     /// @notice This is to handle decimal conversion in the case where underlying tokens have < 18 decimals.

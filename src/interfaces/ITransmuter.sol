@@ -25,6 +25,7 @@ interface ITransmuter {
 
     struct InitializationParams {
         address syntheticToken;
+        address feeReceiver;
         uint256 timeToTransmute;
         uint256 transmutationFee;
         uint256 exitFee;
@@ -64,6 +65,8 @@ interface ITransmuter {
     ///
     /// @notice `alchemist` must not have been previously added.
     ///
+    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    ///
     /// @param alchemist    The address to add.
     function addAlchemist(address alchemist) external;
 
@@ -71,23 +74,41 @@ interface ITransmuter {
     ///
     /// @notice `alchemist` must have been previously added.
     ///
+    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    ///
+    ///
     /// @param alchemist    The address to remove.
     function removeAlchemist(address alchemist) external;
 
     /// @notice Sets time to transmute to `time`.
+    ///
+    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
     ///
     /// @param time    The new transmutation time.
     function setTransmutationTime(uint256 time) external;
 
     /// @notice Sets the transmutation fee to `fee`.
     ///
+    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    ///
     /// @param fee    The new transmutation fee.
     function setTransmutationFee(uint256 fee) external;
 
     /// @notice Sets the early exit fee to `fee`.
     ///
+    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    ///
     /// @param fee    The new exit fee.
     function setExitFee(uint256 fee) external;
+
+    /// @notice Set a new protocol fee receiver.
+    ///
+    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    ///
+    /// @notice Emits a {ProtocolFeeReceiverUpdated} event.
+    ///
+    /// @param receiver The address of the new fee receiver.
+    function setProtocolFeeReceiver(address receiver) external;
 
     /// @notice Gets entry data for `alchemist`.
     ///
@@ -164,4 +185,9 @@ interface ITransmuter {
     ///
     /// @param fee  The new exit fee.
     event ExitFeeUpdated(uint256 fee);
+
+    /// @dev Emitted when the fee receiver is updates.
+    ///
+    /// @param recevier  The new receiver.
+    event ProtocolFeeReceiverUpdated(address recevier);
 }

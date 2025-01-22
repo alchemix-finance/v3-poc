@@ -74,7 +74,6 @@ contract Transmuter is ITransmuter, ITransmuterErrors, ERC1155 {
         timeToTransmute = params.timeToTransmute;
         transmutationFee = params.transmutationFee;
         exitFee = params.exitFee;
-
         // default for now
         admin = msg.sender;
     }
@@ -119,6 +118,13 @@ contract Transmuter is ITransmuter, ITransmuterErrors, ERC1155 {
     /// @inheritdoc ITransmuter
     function setTransmutationTime(uint256 time) external onlyAdmin {
         timeToTransmute = time;
+    }
+
+    /// @inheritdoc ITransmuter
+    function setProtocolFeeReceiver(address value) external onlyAdmin {
+        _checkArgument(value != address(0));
+        protocolFeeReceiver = value;
+        emit ProtocolFeeReceiverUpdated(value);
     }
 
     /// @inheritdoc ITransmuter
@@ -177,6 +183,8 @@ contract Transmuter is ITransmuter, ITransmuterErrors, ERC1155 {
         uint256 amountMatured = position.amount - amountEarly;
 
         _burn(msg.sender, id, position.amount);
+
+        // TODO: burn remaining synths
 
         // If the contract has a balance of underlying tokens from alchemist repayments then we only need to redeem partial or none from Alchemist earmarked
         uint256 underlyingBalance = TokenUtils.safeBalanceOf(position.underlyingAsset, address(this));

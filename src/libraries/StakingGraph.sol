@@ -5,6 +5,7 @@ import {SafeCast} from "./SafeCast.sol";
 library StakingGraph {
     using SafeCast for int256;
 
+    // TODO: Add block params to make queries and upates less costly and remove hardcoded loop value from _update
     function updateStakingGraph(mapping(uint256 => int256) storage graph, int256 amount, uint256 blocks) public {
         uint256 currentBlock = block.number;
         uint256 expirationBlock = currentBlock + blocks;

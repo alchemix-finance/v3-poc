@@ -1,6 +1,6 @@
 pragma solidity ^0.8.23;
 
-import {IYieldToken} from "../interfaces/IYieldToken.sol";
+import {IYieldToken} from "../../interfaces/IYieldToken.sol";
 
 contract TokenAdapterMock {
     address public token;
