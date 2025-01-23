@@ -421,6 +421,7 @@ contract AlchemistV3Test is Test {
         address[] memory usersToLiquidate = new address[](2);
         usersToLiquidate[0] = address(0xbeef);
         usersToLiquidate[1] = anotherExternalUser;
+
         (uint256 assets, uint256 fee) = alchemist.batchLiquidate(usersToLiquidate);
 
         uint256 liquidatorPostTokenBalance = IERC20(fakeYieldToken).balanceOf(externalUser);

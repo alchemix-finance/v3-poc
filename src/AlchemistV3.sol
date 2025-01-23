@@ -10,7 +10,6 @@ import "./libraries/Limiters.sol";
 import "./libraries/SafeCast.sol";
 import {Initializable} from "../lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
 import {Unauthorized, IllegalArgument, InsufficientAllowance, MissingInputData, IllegalState} from "./base/Errors.sol";
-import {console} from "../lib/forge-std/src/console.sol";
 
 // TODO: Potentially switch from proprietary librariies
 // TODO: Set fees
@@ -387,6 +386,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     function liquidate(address owner) external override returns (uint256 underlyingAmount, uint256 fee) {
         (underlyingAmount, fee) = _liquidate(owner);
         if (underlyingAmount > 0) {
+            emit Liquidated(owner, msg.sender, underlyingAmount, fee);
             return (underlyingAmount, fee);
         } else {
             // no liquidation amount returned, so no liquidation happened
@@ -408,6 +408,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         }
 
         if (totalAmountLiquidated > 0) {
+            emit BatchLiquidated(owners, msg.sender, totalAmountLiquidated, totalFees);
             return (totalAmountLiquidated, totalFees);
         } else {
             // no total liquidation amount returned, so no liquidations happened

@@ -334,6 +334,22 @@ interface IAlchemistV3Events {
     ///
     /// @param receiver   The address of the new receiver.
     event ProtocolFeeReceiverUpdated(address receiver);
+
+    /// @notice Emitted when account for 'owner' has been liquidated.
+    ///
+    /// @param owner        The address of the account liquidated
+    /// @param liquidator   The address of the liquidator
+    /// @param amount       The amount liquidated
+    /// @param fee          The liquidation fee sent to 'liquidator'
+    event Liquidated(address indexed owner, address liquidator, uint256 amount, uint256 fee);
+
+    /// @notice Emitted when account for 'owner' has been liquidated.
+    ///
+    /// @param owners       The address of the accounts liquidated
+    /// @param liquidator   The address of the liquidator
+    /// @param amount       The amount liquidated
+    /// @param fee          The liquidation fee sent to 'liquidator'
+    event BatchLiquidated(address[] indexed owners, address liquidator, uint256 amount, uint256 fee);
 }
 
 interface IAlchemistV3Immutables {
