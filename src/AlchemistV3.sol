@@ -24,8 +24,10 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     /// @inheritdoc IAlchemistV3Immutables
     string public constant version = "3.0.0";
 
+    // Basis Points for calculations
     uint256 public constant BPS = 10_000;
 
+    // Constant used in big number calculations where fractions would normally be used
     uint256 public constant FIXED_POINT_SCALAR = 1e18;
 
     /// @inheritdoc IAlchemistV3Immutables
@@ -73,16 +75,20 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     // Array matches LTV to the yield token of the same index
     uint256 public LTV;
 
+    // Fee earned by liquidator
+    uint256 public liquidatorFee;
+
     uint256 private _earmarkWeight;
 
     uint256 private _redemptionWeight;
 
-    uint256 public liquidatorFee;
-
+    // Token adapter for this alchemist. Used to fetch yield to underlying token price
     address private adapter;
 
+    // User accounts
     mapping(address => Account) private _accounts;
 
+    // Mint limiter to ensure max mints per number of blocks
     Limiters.LinearGrowthLimiter private _mintingLimiter;
 
     modifier onlyAdmin() {
