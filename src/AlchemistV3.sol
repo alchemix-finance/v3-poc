@@ -201,7 +201,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         underlyingToken = params.underlyingToken;
         underlyingDecimals = TokenUtils.expectDecimals(params.underlyingToken);
         adapter = params.adapter;
-        underlyingConversionFactor = 10 ** (TokenUtils.expectDecimals(params.debtToken) - TokenUtils.expectDecimals(params.underlyingToken));
+        underlyingConversionFactor = uint8(10) ** (TokenUtils.expectDecimals(params.debtToken) - TokenUtils.expectDecimals(params.underlyingToken));
         yieldToken = params.yieldToken;
         LTV = params.LTV;
         admin = params.admin;
@@ -217,14 +217,6 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     function setMaxLoanToValue(uint256 newLTV) external override onlyAdmin {
         _checkArgument(newLTV > 0 && newLTV < 1e18);
         LTV = newLTV;
-    }
-
-    /// @inheritdoc IAlchemistV3AdminActions
-    function setMinimumCollateralization(uint256 value) external onlyAdmin {
-        _checkArgument(value < 1e18);
-        minimumCollateralization = value;
-
-        emit MinimumCollateralizationUpdated(value);
     }
 
     /// @inheritdoc IAlchemistV3Actions
@@ -286,9 +278,6 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
         // Sync current user debt before more is taken
         _sync(msg.sender);
-
-        // Validate that user is not breaking LTV constraints
-        _validate(msg.sender);
 
         // Mint tokens to self
         _mint(msg.sender, amount, recipient);
@@ -462,9 +451,9 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
                 underlyingAmount = liquidationAmount;
             }
 
-            uint256 updatedCollateral = convertUnderlyingToYieldTokens(updatedCollateralInUnderlying);
-            uint256 liquidationAmountMinusFee = convertUnderlyingToYieldTokens(liquidationAmount - feeInUnderlying);
-            fee = convertUnderlyingToYieldTokens(feeInUnderlying);
+            uint256 updatedCollateral = convertUnderlyingTokensToYield(updatedCollateralInUnderlying);
+            uint256 liquidationAmountMinusFee = convertUnderlyingTokensToYield(liquidationAmount - feeInUnderlying);
+            fee = convertUnderlyingTokensToYield(feeInUnderlying);
 
             // send liquidation amount - any fee to the transmuter. the transmuter only accepts yield tokens
             TokenUtils.safeTransferFrom(yieldToken, address(this), transmuter, liquidationAmountMinusFee);
@@ -476,8 +465,6 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
             _accounts[owner].collateralBalance = updatedCollateral;
 
             if (fee > 0) {
-                // TODO fix next line (placeholder using first token in array)
-                // need to determine how fee token gets picked
                 TokenUtils.safeTransfer(yieldToken, msg.sender, fee);
             }
         }
@@ -513,11 +500,9 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         return normalizeUnderlyingTokensToDebt(convertYieldTokensToUnderlying(amount));
     }
 
-    /// @dev Returns the yield tokens for `amount` in underlying tokens.
-    ///
-    /// @param amount   The amount to convert.
-    function convertUnderlyingToYieldTokens(uint256 amount) public view returns (uint256) {
-        uint8 decimals = TokenUtils.expectDecimals(yieldToken);
+    /// @inheritdoc IAlchemistV3State
+    function convertUnderlyingTokensToYield(uint256 amount) public view returns (uint256) {
+        uint256 decimals = TokenUtils.expectDecimals(yieldToken);
         return (amount * (10 ** decimals)) / ITokenAdapter(adapter).price();
     }
 

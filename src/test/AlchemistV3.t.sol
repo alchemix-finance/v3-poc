@@ -126,7 +126,7 @@ contract AlchemistV3Test is Test {
         whitelist = new Whitelist();
 
         // AlToken Transmuter
-        transmuter = new Transmuter(ITransmuter.InitializationParams(address(alToken), 5_256_000, 0, 0));
+        transmuter = new Transmuter(ITransmuter.InitializationParams(address(alToken), address(this), 5_256_000, 0, 0));
 
         // AlchemistV3 proxy
         IAlchemistV3State.InitializationParams memory params = IAlchemistV3State.InitializationParams({
@@ -220,7 +220,7 @@ contract AlchemistV3Test is Test {
 
     function testSetMaxLTV_Invalid_LTV_Zero() external {
         uint256 ltv = 0;
-        vm.startPrank(address(0xbeef));
+        vm.startPrank(admin);
         vm.expectRevert(IllegalArgument.selector);
         alchemist.setMaxLoanToValue(ltv);
         vm.stopPrank();
@@ -229,7 +229,7 @@ contract AlchemistV3Test is Test {
     function testSetMaxLTV_Invalid_LTV_Above_Max_Bound(uint256 ltv) external {
         // ~ all possible LTVS above max bound
         vm.assume(ltv > 1e18);
-        vm.startPrank(address(0xbeef));
+        vm.startPrank(admin);
         vm.expectRevert(IllegalArgument.selector);
         alchemist.setMaxLoanToValue(ltv);
         vm.stopPrank();

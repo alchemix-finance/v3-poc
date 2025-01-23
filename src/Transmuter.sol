@@ -12,7 +12,7 @@ import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import {SafeCast} from "./libraries/SafeCast.sol";
 import {StakingGraph} from "./libraries/StakingGraph.sol";
 
-import {Unauthorized, IllegalArgument, IllegalState, InsufficientAllowance} from "./base/Errors.sol";
+import {IllegalArgument} from "./base/Errors.sol";
 
 /// @title AlchemixV3 Transmuter
 ///
@@ -74,7 +74,7 @@ contract Transmuter is ITransmuter, ITransmuterErrors, ERC1155 {
         timeToTransmute = params.timeToTransmute;
         transmutationFee = params.transmutationFee;
         exitFee = params.exitFee;
-        // default for now
+        protocolFeeReceiver = params.feeReceiver;
         admin = msg.sender;
     }
 

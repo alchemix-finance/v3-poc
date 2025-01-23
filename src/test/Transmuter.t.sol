@@ -24,7 +24,7 @@ contract TransmuterTest is Test {
         collateralToken = new AlEth();
         underlyingToken = new AlEth();
 
-        transmuter = new Transmuter(ITransmuter.InitializationParams(address(alETH), 5_256_000, 0, 0));
+        transmuter = new Transmuter(ITransmuter.InitializationParams(address(alETH), address(this), 5_256_000, 0, 0));
 
         transmuter.addAlchemist(alchemist);
 
