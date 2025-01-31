@@ -49,10 +49,10 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     uint256 public minimumCollateralization;
 
     /// @inheritdoc IAlchemistV3State
-    uint256 public collateralizationUpperBound;
+    uint256 public collateralizationLowerBound;
 
     /// @inheritdoc IAlchemistV3State
-    uint256 public liquidationPercent;
+    uint256 public liquidationTargetPercent;
 
     /// @inheritdoc IAlchemistV3State
     uint256 public totalDebt;
@@ -157,18 +157,19 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     }
 
     /// @inheritdoc IAlchemistV3AdminActions
-    function setCollateralizationUpperBound(uint256 value) external onlyAdmin {
-        _checkArgument(value >= minimumCollateralization);
-        collateralizationUpperBound = value;
-        emit CollateralizationUpperBoundUpdated(value);
+    function setCollateralizationLowerBound(uint256 value) external onlyAdmin {
+        _checkArgument(value <= minimumCollateralization);
+        _checkArgument(value >= 1e18);
+        collateralizationLowerBound = value;
+        emit CollateralizationLowerBoundUpdated(value);
     }
 
     /// @inheritdoc IAlchemistV3AdminActions
-    function setLiquidationPercentOfLTV(uint256 value) external onlyAdmin {
-        _checkArgument(value <= 1e18);
-        _checkArgument(value >= 50e16);
-        liquidationPercent = value;
-        emit LiquidationPercentOfLTVUpdated(value);
+    function setLiquidationTargetPercent(uint256 value) external onlyAdmin {
+        _checkArgument(value <= 1e18); // 100%. i.e. <= 100% * minimumcollaterization
+        _checkArgument(value > 0);
+        liquidationTargetPercent = value;
+        emit LiquidationTargetPercentUpdated(value);
     }
 
     /// @inheritdoc IAlchemistV3State
@@ -231,8 +232,8 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         protocolFeeReceiver = params.protocolFeeReceiver;
         liquidatorFee = params.liquidatorFee;
         lastEarmarkBlock = block.number;
-        liquidationPercent = params.liquidationPercent;
-        collateralizationUpperBound = params.collateralizationUpperBound;
+        liquidationTargetPercent = params.liquidationTargetPercent;
+        collateralizationLowerBound = params.collateralizationLowerBound;
         _mintingLimiter = Limiters.createLinearGrowthLimiter(params.mintingLimitMaximum, params.mintingLimitBlocks, params.mintingLimitMinimum);
         TokenUtils.safeApprove(yieldToken, address(this), type(uint256).max);
     }
@@ -434,8 +435,8 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         uint256 collateralInUnderlying = totalValue(owner);
         uint256 collateralization = collateralInUnderlying * FIXED_POINT_SCALAR / uint256(debt);
 
-        if (collateralization < collateralizationUpperBound) {
-            uint256 updatedCollateralInUnderlying = ((liquidationPercent * collateralInUnderlying) / minimumCollateralization);
+        if (collateralization < collateralizationLowerBound) {
+            uint256 updatedCollateralInUnderlying = ((liquidationTargetPercent * collateralInUnderlying) / minimumCollateralization);
             uint256 liquidationAmount = collateralInUnderlying - updatedCollateralInUnderlying;
             uint256 updatedDebt = debt - liquidationAmount;
             uint256 feeInUnderlying;

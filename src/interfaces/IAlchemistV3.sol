@@ -216,23 +216,23 @@ interface IAlchemistV3AdminActions {
     /// @param value The new minimum collateralization ratio.
     function setMinimumCollateralization(uint256 value) external;
 
-    /// @notice Set the collateralization upper bound ratio.
+    /// @notice Set the collateralization lower bound ratio.
     ///
     /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
     ///
-    /// @notice Emits a {CollateralizationUpperBoundUpdated} event.
+    /// @notice Emits a {CollateralizationLowerBoundUpdated} event.
     ///
-    /// @param value The new collateralization upper bound ratio.
-    function setCollateralizationUpperBound(uint256 value) external;
+    /// @param value The new collateralization lower bound ratio.
+    function setCollateralizationLowerBound(uint256 value) external;
 
     /// @notice Set the percentage of max LTV (minimumColleteralization) to adjust an account to, during a liquidation.
     ///
     /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
     ///
-    /// @notice Emits a {LiquidationPercentOfLTVnUpdated} event.
+    /// @notice Emits a {LiquidationTargetPercentUpdated} event.
     ///
     /// @param value The new minimum collateralization ratio.
-    function setLiquidationPercentOfLTV(uint256 value) external;
+    function setLiquidationTargetPercent(uint256 value) external;
 
     /// @notice Set a new protocol fee receiver.
     ///
@@ -274,15 +274,15 @@ interface IAlchemistV3Events {
     /// @param minimumCollateralization The updated minimum collateralization.
     event MinimumCollateralizationUpdated(uint256 minimumCollateralization);
 
-    /// @notice Emitted when the collateralization upper bound (for a liquidation) is updated.
+    /// @notice Emitted when the collateralization lower bound (for a liquidation) is updated.
     ///
-    /// @param collateralizationUpperBound The updated collateralization upper bound.
-    event CollateralizationUpperBoundUpdated(uint256 collateralizationUpperBound);
+    /// @param collateralizationLowerBound The updated collateralization lower bound.
+    event CollateralizationLowerBoundUpdated(uint256 collateralizationLowerBound);
 
     /// @notice Emitted when the liquidation percent of max LTV (minimum collateralization) is updated.
     ///
-    /// @param liquidationPercentOfLTV The updated minimum collateralization.
-    event LiquidationPercentOfLTVUpdated(uint256 liquidationPercentOfLTV);
+    /// @param liquidationTargetPercent The updated minimum collateralization.
+    event LiquidationTargetPercentUpdated(uint256 liquidationTargetPercent);
 
     /// @notice Emitted when the minting limit is updated.
     ///
@@ -398,10 +398,10 @@ interface IAlchemistV3State {
         address yieldToken;
         // The minimum collateralization between 0 and 1 exclusive
         uint256 minimumCollateralization;
-        // The maximum collateralization for liquidation eligibility. between 0 and 1 exclusive
-        uint256 collateralizationUpperBound;
+        // The minimum collateralization for liquidation eligibility. between 1 and minimumCollateralization inclusive
+        uint256 collateralizationLowerBound;
         // The percentage of max LTV (minimumColleteralization) to adjust an account to, during a liquidation.
-        uint256 liquidationPercent;
+        uint256 liquidationTargetPercent;
         // The initial transmuter or transmuter buffer.
         address transmuter;
         // TODO Need to discuss how fees will be accumulated since harvests will no longer be done.
@@ -449,10 +449,10 @@ interface IAlchemistV3State {
     function protocolFee() external view returns (uint256 fee);
 
     ///  @notice Gets collaterlization level that will result in an account being eligible for partial liquidation
-    function collateralizationUpperBound() external view returns (uint256 ratio);
+    function collateralizationLowerBound() external view returns (uint256 ratio);
 
     ///  @notice Gets specfied % of max LTV to reduce an account to for a liquidation
-    function liquidationPercent() external view returns (uint256 percent);
+    function liquidationTargetPercent() external view returns (uint256 percent);
 
     function underlyingDecimals() external view returns (uint8 decimals);
 

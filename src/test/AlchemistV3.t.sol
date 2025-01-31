@@ -138,8 +138,8 @@ contract AlchemistV3Test is Test {
             adapter: address(tokenAdapter),
             transmuter: address(transmuter),
             minimumCollateralization: minimumCollateralization, // 1.1
-            collateralizationUpperBound: 1_052_631_578_950_000_000, // hardcoding 1.05 collateralization for now
-            liquidationPercent: 98e16, // 98% of max LTV .e. 98% of 90%
+            collateralizationLowerBound: 1_052_631_578_950_000_000, // 1.05 collateralization
+            liquidationTargetPercent: 980_392_156_860_000_000, // ~.98% of minimum collaterization
             protocolFee: 1000,
             protocolFeeReceiver: address(10),
             liquidatorFee: 1000, // in bps?
@@ -212,7 +212,7 @@ contract AlchemistV3Test is Test {
         vm.stopPrank();
     }
 
-    function testSetMaxLTV_Variable_LTV(uint256 collateralizationRatio) external {
+    function testSetMinimumCollaterization_Variable_Ratio(uint256 collateralizationRatio) external {
         vm.assume(collateralizationRatio > 1e18);
         vm.startPrank(admin);
         alchemist.setMinimumCollateralization(collateralizationRatio);
@@ -220,16 +220,15 @@ contract AlchemistV3Test is Test {
         vm.stopPrank();
     }
 
-    function testSetMaxLTV_Invalid_LTV_Zero() external {
-        uint256 collateralizationRatio = 0;
+    function testSetMinimumCollaterization_Invalid_Ratio_Zero() external {
         vm.startPrank(admin);
         vm.expectRevert(IllegalArgument.selector);
-        alchemist.setMinimumCollateralization(collateralizationRatio);
+        alchemist.setMinimumCollateralization(0);
         vm.stopPrank();
     }
 
-    function testSetMaxLTV_Invalid_LTV_Below_Min_Bound(uint256 collateralizationRatio) external {
-        // ~ all possible LTVS above max bound
+    function testMinimumCollaterization_Invalid_Ratio_Below_One(uint256 collateralizationRatio) external {
+        // ~ all possible ratios below 1
         vm.assume(collateralizationRatio < 1e18);
         vm.startPrank(admin);
         vm.expectRevert(IllegalArgument.selector);
@@ -237,37 +236,55 @@ contract AlchemistV3Test is Test {
         vm.stopPrank();
     }
 
-    function testSetCollateralizationUpperBound_Variable_Upper_Bound(uint256 collateralizationRatio) external {
-        vm.assume(collateralizationRatio >= minimumCollateralization);
+    function testSetCollateralizationLowerBound_Variable_Upper_Bound(uint256 collateralizationRatio) external {
+        collateralizationRatio = bound(collateralizationRatio, 1e18, minimumCollateralization);
         vm.startPrank(admin);
-        alchemist.setCollateralizationUpperBound(collateralizationRatio);
-        vm.assertApproxEqAbs(alchemist.collateralizationUpperBound(), collateralizationRatio, minimumDepositOrWithdrawalLoss);
+        alchemist.setCollateralizationLowerBound(collateralizationRatio);
+        vm.assertApproxEqAbs(alchemist.collateralizationLowerBound(), collateralizationRatio, minimumDepositOrWithdrawalLoss);
         vm.stopPrank();
     }
 
-    function testSetLiquidationPercentOfLTV_Variable_Percent(uint256 percent) external {
-        percent = bound(percent, 50e16, 1e18);
-        vm.startPrank(admin);
-        alchemist.setLiquidationPercentOfLTV(percent);
-        vm.assertApproxEqAbs(alchemist.liquidationPercent(), percent, minimumDepositOrWithdrawalLoss);
-        vm.stopPrank();
-    }
-
-    function testSetLiquidationPercentOfLTV_Invalid_LTV_Below_Min_Bound(uint256 percent) external {
-        // ~ all possible LTVS above max bound
-        vm.assume(percent < 50e16);
+    function testSetCollateralizationLowerBound_Invalid_Above_Minimumcollaterization(uint256 collateralizationRatio) external {
+        // ~ all possible ratios above minimum collaterization ratio
+        vm.assume(collateralizationRatio > minimumCollateralization);
         vm.startPrank(admin);
         vm.expectRevert(IllegalArgument.selector);
-        alchemist.setLiquidationPercentOfLTV(percent);
+        alchemist.setCollateralizationLowerBound(collateralizationRatio);
         vm.stopPrank();
     }
 
-    function testSetLiquidationPercentOfLTV_Invalid_LTV_Amove_Max_Bound(uint256 percent) external {
-        // ~ all possible LTVS above max bound
+    function testSetCollateralizationLowerBound_Invalid_Below_One(uint256 collateralizationRatio) external {
+        // ~ all possible ratios below minimum collaterization ratio
+        vm.assume(collateralizationRatio < 1e18);
+        vm.startPrank(admin);
+        vm.expectRevert(IllegalArgument.selector);
+        alchemist.setCollateralizationLowerBound(collateralizationRatio);
+        vm.stopPrank();
+    }
+
+    function testSetLiquidationTargetPercent_Variable_Percent(uint256 percent) external {
+        vm.assume(percent <= 1e18);
+        vm.assume(percent > 0);
+
+        vm.startPrank(admin);
+        alchemist.setLiquidationTargetPercent(percent);
+        vm.assertApproxEqAbs(alchemist.liquidationTargetPercent(), percent, minimumDepositOrWithdrawalLoss);
+        vm.stopPrank();
+    }
+
+    function testSetLiquidationTargetPercent_Invalid_Zero() external {
+        vm.startPrank(admin);
+        vm.expectRevert(IllegalArgument.selector);
+        alchemist.setLiquidationTargetPercent(0);
+        vm.stopPrank();
+    }
+
+    function testSetLiquidationTargetPercent_Invalid_Above_Max_Bound(uint256 percent) external {
+        // ~ all possible ratios above max bound
         vm.assume(percent > 1e18);
         vm.startPrank(admin);
         vm.expectRevert(IllegalArgument.selector);
-        alchemist.setLiquidationPercentOfLTV(percent);
+        alchemist.setLiquidationTargetPercent(percent);
         vm.stopPrank();
     }
 
@@ -291,9 +308,6 @@ contract AlchemistV3Test is Test {
 
     function testMint_Variable_CollateralizationRatio(uint256 collateralizationRatio) external {
         uint256 amount = depositAmount;
-
-        // Ensure collateralizationRatio is greater than 1 (1e18 in fixed-point)
-        // vm.assume(collateralizationRatio > minimumCollateralization);
         collateralizationRatio = bound(collateralizationRatio, minimumCollateralization, type(uint256).max);
 
         vm.startPrank(address(0xbeef));
@@ -305,10 +319,8 @@ contract AlchemistV3Test is Test {
         if (collateralizationRatio > totalValue) {
             // Handle overflow
             mintAmount = collateralizationRatio / (collateralizationRatio - totalValue);
-            console.log("[collateralizationRatio > totalValue] : mintAmount: ", mintAmount);
         } else {
             mintAmount = (totalValue * FIXED_POINT_SCALAR) / collateralizationRatio;
-            console.log("[collateralizationRatio <= totalValue] : mintAmount: ", mintAmount);
         }
         alchemist.mint(mintAmount, address(0xbeef));
         vm.assertApproxEqAbs(IERC20(alToken).balanceOf(address(0xbeef)), mintAmount, minimumDepositOrWithdrawalLoss);
@@ -395,7 +407,7 @@ contract AlchemistV3Test is Test {
         // Line 915, increase self.totalSupply with everything else being equal to decrease the share price
         uint256 initialVaultSupply = IYearnVaultV2(address(fakeYieldToken)).totalSupply();
 
-        // increasing yeild token suppy by 60 bps or 5.9%  while keeping the unederlying supply unchanged
+        // increasing yeild token suppy by 59 bps or 5.9%  while keeping the unederlying supply unchanged
         uint256 modifiedVaultSupply = (initialVaultSupply * 590 / 10_000) + initialVaultSupply;
         vm.store(address(fakeYieldToken), bytes32(uint256(5)), bytes32(modifiedVaultSupply));
         bytes32 modifiedStateVariable = vm.load(address(fakeYieldToken), bytes32(uint256(5)));
@@ -415,16 +427,16 @@ contract AlchemistV3Test is Test {
         vm.stopPrank();
 
         // ensure debt is reduced by (underlying collateral - (98% of 90% of underlying collateral i.e. ~ 88% of underlying))
-        vm.assertApproxEqAbs(debt, 1_785_629_673_104_354_568_768_385_224, minimumDepositOrWithdrawalLoss);
+        vm.assertApproxEqAbs(debt, 1_786_384_339_890_553_451_687_383_955, minimumDepositOrWithdrawalLoss);
 
         // ensure depositedCollateral is reduced by (underlying collateral - (98% of 90% of underlying collateral i.e. ~ 88% of underlying))
-        vm.assertApproxEqAbs(depositedCollateral, 1_740_400_000_000_000_000_194_040_000, minimumDepositOrWithdrawalLoss);
+        vm.assertApproxEqAbs(depositedCollateral, 1_741_176_470_582_800_000_194_117_647, minimumDepositOrWithdrawalLoss);
 
         // ensure assets liquidated is equal (collateral - (90% of collateral))
-        vm.assertApproxEqAbs(assets, 252_310_263_951_998_370_035_408_769, minimumDepositOrWithdrawalLoss);
+        vm.assertApproxEqAbs(assets, 251_555_597_165_799_487_116_410_038, minimumDepositOrWithdrawalLoss);
 
         // ensure liquidator fee is correct (10% of liquidation amount)
-        vm.assertApproxEqAbs(fee, 23_599_999_999_999_999_982_359_999, 1e18);
+        vm.assertApproxEqAbs(fee, 23_529_411_765_199_999_982_352_940, 1e18);
 
         // liquidator gets correct amount of fee
         vm.assertApproxEqAbs(liquidatorPostTokenBalance, liquidatorPrevTokenBalance + fee, 1e18);
@@ -480,28 +492,28 @@ contract AlchemistV3Test is Test {
         /// Tests for first liquidated User ///
 
         // ensure depositedCollateral is reduced by (underlying collateral - (98% of 90% of underlying collateral i.e. ~ 88% of underlying))
-        vm.assertApproxEqAbs(debt, 1_785_629_673_104_354_568_768_385_224, minimumDepositOrWithdrawalLoss);
+        vm.assertApproxEqAbs(debt, 1_786_384_339_890_553_451_687_383_955, minimumDepositOrWithdrawalLoss);
 
         // ensure depositedCollateral is reduced by (underlying collateral - (90% of underlying collateral)) i.e. last recorded ltv = .9
-        vm.assertApproxEqAbs(depositedCollateral, 1_740_400_000_000_000_000_194_040_000, minimumDepositOrWithdrawalLoss);
+        vm.assertApproxEqAbs(depositedCollateral, 1_741_176_470_582_800_000_194_117_647, minimumDepositOrWithdrawalLoss);
 
         /// Tests for second liquidated User ///
 
         (depositedCollateral, debt) = alchemist.getCDP(anotherExternalUser);
 
         // ensure debt is reduced by (underlying collateral - (98% of 90% of underlying collateral i.e. ~ 88% of underlying))
-        vm.assertApproxEqAbs(debt, 1_785_629_673_104_354_568_564_591_231, minimumDepositOrWithdrawalLoss);
+        vm.assertApproxEqAbs(debt, 1_786_384_339_890_553_451_483_589_962, minimumDepositOrWithdrawalLoss);
 
         // ensure depositedCollateral is reduced by (underlying collateral - (98% of 90% of underlying collateral i.e. ~ 88% of underlying))
-        vm.assertApproxEqAbs(depositedCollateral, 1_740_400_000_000_000_000_194_040_000, minimumDepositOrWithdrawalLoss);
+        vm.assertApproxEqAbs(depositedCollateral, 1_741_176_470_582_800_000_194_117_647, minimumDepositOrWithdrawalLoss);
 
         // Tests for Liquidator ///
 
         // ensure assets liquidated is equal (collateral - (88% of collateral))
-        vm.assertApproxEqAbs(assets, 504_620_527_903_996_740_070_817_538, minimumDepositOrWithdrawalLoss);
+        vm.assertApproxEqAbs(assets, 503_111_194_331_598_974_232_820_076, minimumDepositOrWithdrawalLoss);
 
         // ensure liquidator fee is correct (10% of liquidation amount)
-        vm.assertApproxEqAbs(fee, 47_199_999_999_999_999_964_719_998, 1e18);
+        vm.assertApproxEqAbs(fee, 47_058_823_530_399_999_964_705_880, 1e18);
 
         // liquidator gets correct amount of fee
         vm.assertApproxEqAbs(liquidatorPostTokenBalance, liquidatorPrevTokenBalance + fee, 1e18);
