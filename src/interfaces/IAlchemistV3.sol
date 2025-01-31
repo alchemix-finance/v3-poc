@@ -185,15 +185,6 @@ interface IAlchemistV3Actions {
 }
 
 interface IAlchemistV3AdminActions {
-    /// @notice Sets 'newLTV' the max loan to value ratio.
-    ///
-    /// @notice `msg.sender` must be the admin or this call will will revert with an {Unauthorized} error.
-    ///
-    /// @notice Emits an event.
-    ///
-    /// @param newLTV ltv between 0 and 1 exclusive
-    function setMaxLoanToValue(uint256 newLTV) external;
-
     /// @notice Sets the pending administrator.
     ///
     /// @notice `msg.sender` must be the admin or this call will will revert with an {Unauthorized} error.
@@ -224,6 +215,24 @@ interface IAlchemistV3AdminActions {
     ///
     /// @param value The new minimum collateralization ratio.
     function setMinimumCollateralization(uint256 value) external;
+
+    /// @notice Set the collateralization upper bound ratio.
+    ///
+    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    ///
+    /// @notice Emits a {CollateralizationUpperBoundUpdated} event.
+    ///
+    /// @param value The new collateralization upper bound ratio.
+    function setCollateralizationUpperBound(uint256 value) external;
+
+    /// @notice Set the percentage of max LTV (minimumColleteralization) to adjust an account to, during a liquidation.
+    ///
+    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    ///
+    /// @notice Emits a {LiquidationPercentOfLTVnUpdated} event.
+    ///
+    /// @param value The new minimum collateralization ratio.
+    function setLiquidationPercentOfLTV(uint256 value) external;
 
     /// @notice Set a new protocol fee receiver.
     ///
@@ -264,6 +273,16 @@ interface IAlchemistV3Events {
     ///
     /// @param minimumCollateralization The updated minimum collateralization.
     event MinimumCollateralizationUpdated(uint256 minimumCollateralization);
+
+    /// @notice Emitted when the collateralization upper bound (for a liquidation) is updated.
+    ///
+    /// @param collateralizationUpperBound The updated collateralization upper bound.
+    event CollateralizationUpperBoundUpdated(uint256 collateralizationUpperBound);
+
+    /// @notice Emitted when the liquidation percent of max LTV (minimum collateralization) is updated.
+    ///
+    /// @param liquidationPercentOfLTV The updated minimum collateralization.
+    event LiquidationPercentOfLTVUpdated(uint256 liquidationPercentOfLTV);
 
     /// @notice Emitted when the minting limit is updated.
     ///
@@ -369,8 +388,6 @@ interface IAlchemistV3State {
     struct InitializationParams {
         // The initial admin account.
         address admin;
-        // The max loan to value ratio
-        uint256 LTV;
         // The ERC20 token used to represent debt. i.e. the alAsset.
         address debtToken;
         // The ERC20 token used to represent the underlying token of the yield token.
@@ -381,6 +398,10 @@ interface IAlchemistV3State {
         address yieldToken;
         // The minimum collateralization between 0 and 1 exclusive
         uint256 minimumCollateralization;
+        // The maximum collateralization for liquidation eligibility. between 0 and 1 exclusive
+        uint256 collateralizationUpperBound;
+        // The percentage of max LTV (minimumColleteralization) to adjust an account to, during a liquidation.
+        uint256 liquidationPercent;
         // The initial transmuter or transmuter buffer.
         address transmuter;
         // TODO Need to discuss how fees will be accumulated since harvests will no longer be done.
@@ -412,8 +433,6 @@ interface IAlchemistV3State {
         uint256 lastAccruedRedemptionWeight;
         /// @notice allowances for minting alAssets
         mapping(address => uint256) mintAllowances;
-        /// @notice Last LTV recorded from User's last mint
-        uint256 defaultLTV;
     }
 
     /// @notice Gets the address of the admin.
@@ -428,6 +447,12 @@ interface IAlchemistV3State {
     function totalDebt() external view returns (uint256 debt);
 
     function protocolFee() external view returns (uint256 fee);
+
+    ///  @notice Gets collaterlization level that will result in an account being eligible for partial liquidation
+    function collateralizationUpperBound() external view returns (uint256 ratio);
+
+    ///  @notice Gets specfied % of max LTV to reduce an account to for a liquidation
+    function liquidationPercent() external view returns (uint256 percent);
 
     function underlyingDecimals() external view returns (uint8 decimals);
 

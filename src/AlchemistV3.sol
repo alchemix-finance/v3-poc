@@ -49,6 +49,12 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     uint256 public minimumCollateralization;
 
     /// @inheritdoc IAlchemistV3State
+    uint256 public collateralizationUpperBound;
+
+    /// @inheritdoc IAlchemistV3State
+    uint256 public liquidationPercent;
+
+    /// @inheritdoc IAlchemistV3State
     uint256 public totalDebt;
 
     /// @inheritdoc IAlchemistV3State
@@ -147,8 +153,22 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     function setMinimumCollateralization(uint256 value) external onlyAdmin {
         _checkArgument(value >= 1e18);
         minimumCollateralization = value;
-
         emit MinimumCollateralizationUpdated(value);
+    }
+
+    /// @inheritdoc IAlchemistV3AdminActions
+    function setCollateralizationUpperBound(uint256 value) external onlyAdmin {
+        _checkArgument(value >= minimumCollateralization);
+        collateralizationUpperBound = value;
+        emit CollateralizationUpperBoundUpdated(value);
+    }
+
+    /// @inheritdoc IAlchemistV3AdminActions
+    function setLiquidationPercentOfLTV(uint256 value) external onlyAdmin {
+        _checkArgument(value <= 1e18);
+        _checkArgument(value >= 50e16);
+        liquidationPercent = value;
+        emit LiquidationPercentOfLTVUpdated(value);
     }
 
     /// @inheritdoc IAlchemistV3State
@@ -159,10 +179,6 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     /// @inheritdoc IAlchemistV3State
     function getCDP(address owner) external view returns (uint256, uint256) {
         return (_accounts[owner].collateralBalance, _calculateUnrealizedDebt(owner));
-    }
-
-    function getDefaultLTV(address owner) external view returns (uint256) {
-        return _accounts[owner].defaultLTV;
     }
 
     // function getLoanTerms() external view returns (uint256 LTV, uint256 liquidationRatio, uint256 redemptionFee) {
@@ -208,20 +224,17 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         adapter = params.adapter;
         underlyingConversionFactor = uint8(10) ** (TokenUtils.expectDecimals(params.debtToken) - TokenUtils.expectDecimals(params.underlyingToken));
         yieldToken = params.yieldToken;
-        LTV = params.LTV;
         admin = params.admin;
+        minimumCollateralization = params.minimumCollateralization;
         transmuter = params.transmuter;
         protocolFee = params.protocolFee;
         protocolFeeReceiver = params.protocolFeeReceiver;
         liquidatorFee = params.liquidatorFee;
         lastEarmarkBlock = block.number;
+        liquidationPercent = params.liquidationPercent;
+        collateralizationUpperBound = params.collateralizationUpperBound;
         _mintingLimiter = Limiters.createLinearGrowthLimiter(params.mintingLimitMaximum, params.mintingLimitBlocks, params.mintingLimitMinimum);
         TokenUtils.safeApprove(yieldToken, address(this), type(uint256).max);
-    }
-
-    function setMaxLoanToValue(uint256 newLTV) external override onlyAdmin {
-        _checkArgument(newLTV > 0 && newLTV < 1e18);
-        LTV = newLTV;
     }
 
     /// @inheritdoc IAlchemistV3Actions
@@ -233,9 +246,6 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
         // Transfer tokens from msg.sender now that the internal storage updates have been committed.
         TokenUtils.safeTransferFrom(yieldToken, msg.sender, address(this), amount);
-
-        // Record the owners ltv
-        _accounts[msg.sender].defaultLTV = (amount * FIXED_POINT_SCALAR) / totalValue(msg.sender);
 
         emit Deposit(amount, recipient);
 
@@ -263,13 +273,6 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
         emit Withdraw(amount, recipient);
 
-        // Record the owners ltv
-        if (totalValue(msg.sender) == 0) {
-            _accounts[msg.sender].defaultLTV = 0;
-        } else {
-            _accounts[msg.sender].defaultLTV = (_accounts[msg.sender].debt * FIXED_POINT_SCALAR) / totalValue(msg.sender);
-        }
-
         return amount;
     }
 
@@ -286,9 +289,6 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
         // Mint tokens to self
         _mint(msg.sender, amount, recipient);
-
-        // Record the owners ltv
-        _accounts[msg.sender].defaultLTV = (amount * FIXED_POINT_SCALAR) / totalValue(msg.sender);
     }
 
     /// @inheritdoc IAlchemistV3Actions
@@ -432,22 +432,10 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
         // owner collateral denominated in underlying value
         uint256 collateralInUnderlying = totalValue(owner);
+        uint256 collateralization = collateralInUnderlying * FIXED_POINT_SCALAR / uint256(debt);
 
-        // the last ltv recorded from the last time the owner performed an ltv changing action
-        uint256 defaultLTV;
-
-        // default to 90% of Max LTV
-        if (_accounts[owner].defaultLTV == 0) {
-            defaultLTV = (9e17 * LTV) / FIXED_POINT_SCALAR;
-        } else {
-            defaultLTV = _accounts[owner].defaultLTV;
-        }
-
-        // the max debt allowable for the current ammount of collateral based on the max LTV
-        uint256 maxDebt = (collateralInUnderlying * LTV) / FIXED_POINT_SCALAR;
-
-        if (debt > maxDebt) {
-            uint256 updatedCollateralInUnderlying = (collateralInUnderlying * defaultLTV) / FIXED_POINT_SCALAR;
+        if (collateralization < collateralizationUpperBound) {
+            uint256 updatedCollateralInUnderlying = ((liquidationPercent * collateralInUnderlying) / minimumCollateralization);
             uint256 liquidationAmount = collateralInUnderlying - updatedCollateralInUnderlying;
             uint256 updatedDebt = debt - liquidationAmount;
             uint256 feeInUnderlying;
@@ -463,6 +451,10 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
             fee = convertUnderlyingTokensToYield(feeInUnderlying);
 
             // send liquidation amount - any fee to the transmuter. the transmuter only accepts yield tokens
+            // [TODO] Need to first partiion `liquidationAmountMinusFee` into funds to be sent to
+            // 1) The repayment vault which will be inculded in future redemptions, if account owner
+            // has any earmarked debt.
+            // 2) Surplus funds to be sent to the transmuter i.e. if account's earmarked debt - liquidationAmountMinusFee > 0
             TokenUtils.safeTransferFrom(yieldToken, address(this), transmuter, liquidationAmountMinusFee);
 
             // update user debt
@@ -546,7 +538,11 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         // Check that the system will allow for the specified amount to be minted.
         // TODO To review and add mint limit checks
         // i.e. _checkMintingLimit(uint256 amount)
-        _addDebt(recipient, amount);
+        // Review account to increase debt. This was initially set to 'recipient'.
+        // in the case that the recipient isn't the owner, it would be problematic.
+        // to increase the debt of an account that doesnt have any collateral.
+        // In theoery, the debt should always be minted from the original account with colllateral
+        _addDebt(owner, amount);
 
         // Validate the owner's account to assure that the collateralization invariant is still held.
         _validate(owner);
@@ -677,7 +673,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         return account.debt - debtToEarmark;
     }
 
-    /// @dev Checks that the account owned by `owner` is properly collateralized.
+    /*    /// @dev Checks that the account owned by `owner` is properly collateralized.
     /// @dev If the account is undercollateralized then this will revert with an {Undercollateralized} error.
     /// @param owner The address of the account owner.
     function _isUnderCollateralized(address owner) internal view returns (bool) {
@@ -686,6 +682,26 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
         uint256 collateralization = (totalValue(owner) * LTV) / FIXED_POINT_SCALAR;
         if (collateralization < debt) {
+            return true;
+        }
+        return false;
+    }
+    */
+
+    /// @dev Checks that the account owned by `owner` is properly collateralized.
+    ///
+    /// @dev If the account is undercollateralized then this return true
+    ///
+    /// @param owner The address of the account owner.
+    function _isUnderCollateralized(address owner) internal view returns (bool) {
+        uint256 debt = _accounts[owner].debt;
+        if (debt == 0) {
+            return false;
+        }
+
+        uint256 collateralization = totalValue(owner) * FIXED_POINT_SCALAR / uint256(debt);
+
+        if (collateralization < minimumCollateralization) {
             return true;
         }
         return false;
