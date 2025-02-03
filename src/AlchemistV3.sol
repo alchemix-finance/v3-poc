@@ -433,36 +433,34 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
         // owner collateral denominated in underlying value
         uint256 collateralInUnderlying = totalValue(owner);
-        uint256 collateralization = collateralInUnderlying * FIXED_POINT_SCALAR / uint256(debt);
+        uint256 collateralizationRatio = collateralInUnderlying * FIXED_POINT_SCALAR / uint256(debt);
 
-        if (collateralization < collateralizationLowerBound) {
-            uint256 updatedCollateralInUnderlying = ((liquidationTargetPercent * collateralInUnderlying) / minimumCollateralization);
-            uint256 liquidationAmount = collateralInUnderlying - updatedCollateralInUnderlying;
+        if (collateralizationRatio < collateralizationLowerBound) {
+            // amount always <= debt
+            uint256 liquidationAmount = _getLiquidationAmount(collateralInUnderlying, debt, minimumCollateralization);
             uint256 updatedDebt = debt - liquidationAmount;
-            uint256 feeInUnderlying;
+            uint256 feeInUnderlying = liquidationAmount * liquidatorFee / 10_000;
+            uint256 remainingCollateral = collateralInUnderlying - liquidationAmount;
 
-            if (liquidationAmount > 0) {
-                feeInUnderlying = liquidationAmount * liquidatorFee / 10_000;
-                updatedCollateralInUnderlying -= feeInUnderlying;
-                underlyingAmount = liquidationAmount;
+            if (feeInUnderlying > remainingCollateral) {
+                feeInUnderlying = remainingCollateral;
             }
 
-            uint256 updatedCollateral = convertUnderlyingTokensToYield(updatedCollateralInUnderlying);
-            uint256 liquidationAmountMinusFee = convertUnderlyingTokensToYield(liquidationAmount - feeInUnderlying);
+            collateralInUnderlying -= (liquidationAmount + feeInUnderlying);
+            underlyingAmount = liquidationAmount + feeInUnderlying;
+            uint256 adjustedCollateral = convertUnderlyingTokensToYield(collateralInUnderlying);
+            uint256 adjustedLiquidationAmount = convertUnderlyingTokensToYield(liquidationAmount);
             fee = convertUnderlyingTokensToYield(feeInUnderlying);
 
             // send liquidation amount - any fee to the transmuter. the transmuter only accepts yield tokens
-            // [TODO] Need to first partiion `liquidationAmountMinusFee` into funds to be sent to
-            // 1) The repayment vault which will be inculded in future redemptions, if account owner
-            // has any earmarked debt.
-            // 2) Surplus funds to be sent to the transmuter i.e. if account's earmarked debt - liquidationAmountMinusFee > 0
-            TokenUtils.safeTransferFrom(yieldToken, address(this), transmuter, liquidationAmountMinusFee);
+            // [Review] correctly handle user earmaked debt/reg debt update
+            TokenUtils.safeTransferFrom(yieldToken, address(this), transmuter, adjustedLiquidationAmount);
 
             // update user debt
             _accounts[owner].debt = updatedDebt;
 
             // update user balance
-            _accounts[owner].collateralBalance = updatedCollateral;
+            _accounts[owner].collateralBalance = adjustedCollateral;
 
             if (fee > 0) {
                 TokenUtils.safeTransfer(yieldToken, msg.sender, fee);
@@ -531,6 +529,26 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         return amount / underlyingConversionFactor;
     }
 
+    /// @dev Calculates the amount required to reduce an accounts debt and collateral by to achieve the target `ratio`.
+    /// @param collateral  The collateral amount for an account.
+    /// @param debt The debt amount for an account.
+    /// @param ratio  The collaterilzation ratio for an account using `colleral` and `debt`.
+    /// @return liquidationAmount amount to be liquidated.
+    function _getLiquidationAmount(uint256 collateral, uint256 debt, uint256 ratio) internal returns (uint256 liquidationAmount) {
+        _checkArgument(ratio > 1e18);
+
+        if (debt >= collateral) {
+            // fully liquidate bad debt
+            return collateral;
+        }
+        // formula = (collateral - amount)/(debt - amount) = ratio
+        uint256 expectedColltaeralForCurrentDebt = (debt * ratio) / FIXED_POINT_SCALAR;
+        uint256 collateralDiff = expectedColltaeralForCurrentDebt - collateral;
+        uint256 ratioDiff = ratio - 1e18;
+        liquidationAmount = collateralDiff * FIXED_POINT_SCALAR / ratioDiff;
+        return liquidationAmount;
+    }
+
     /// @dev Mints debt tokens to `recipient` using the account owned by `owner`.
     /// @param owner     The owner of the account to mint from.
     /// @param amount    The amount to mint.
@@ -566,7 +584,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         totalDebt += amount;
     }
 
-    /// @dev Increases the debt by `amount` for the account owned by `owner`.
+    /// @dev Decreases the debt by `amount` for the account owned by `owner`.
     /// @param owner   The address of the account owner.
     /// @param amount  The amount to increase the debt by.
     function _subDebt(address owner, uint256 amount) internal {

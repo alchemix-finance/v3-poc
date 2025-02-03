@@ -142,7 +142,7 @@ contract AlchemistV3Test is Test {
             liquidationTargetPercent: 980_392_156_860_000_000, // ~.98% of minimum collaterization
             protocolFee: 1000,
             protocolFeeReceiver: address(10),
-            liquidatorFee: 1000, // in bps?
+            liquidatorFee: 500, // in bps? 5%
             mintingLimitMinimum: 1,
             mintingLimitMaximum: uint256(type(uint160).max),
             mintingLimitBlocks: 300
@@ -426,17 +426,17 @@ contract AlchemistV3Test is Test {
 
         vm.stopPrank();
 
-        // ensure debt is reduced by (underlying collateral - (98% of 90% of underlying collateral i.e. ~ 88% of underlying))
-        vm.assertApproxEqAbs(debt, 1_786_384_339_890_553_451_687_383_955, minimumDepositOrWithdrawalLoss);
+        // ensure debt is reduced by the result of (collateral - y)/(debt - y) = minimum collateral ratio
+        vm.assertApproxEqAbs(debt, 902_543_749_272_360_263_668_397_815, minimumDepositOrWithdrawalLoss);
 
-        // ensure depositedCollateral is reduced by (underlying collateral - (98% of 90% of underlying collateral i.e. ~ 88% of underlying))
-        vm.assertApproxEqAbs(depositedCollateral, 1_741_176_470_582_800_000_194_117_647, minimumDepositOrWithdrawalLoss);
+        // ensure depositedCollateral is reduced by the result of (collateral - y)/(debt - y) = minimum collateral ratio
+        vm.assertApproxEqAbs(depositedCollateral, 884_899_999_999_999_991_035_763_915, minimumDepositOrWithdrawalLoss);
 
         // ensure assets liquidated is equal (collateral - (90% of collateral))
-        vm.assertApproxEqAbs(assets, 251_555_597_165_799_487_116_410_038, minimumDepositOrWithdrawalLoss);
+        vm.assertApproxEqAbs(assets, 1_192_165_997_173_192_308_892_165_986, minimumDepositOrWithdrawalLoss);
 
         // ensure liquidator fee is correct (10% of liquidation amount)
-        vm.assertApproxEqAbs(fee, 23_529_411_765_199_999_982_352_940, 1e18);
+        vm.assertApproxEqAbs(fee, 53_100_000_000_000_000_426_868_384, 1e18);
 
         // liquidator gets correct amount of fee
         vm.assertApproxEqAbs(liquidatorPostTokenBalance, liquidatorPrevTokenBalance + fee, 1e18);
@@ -491,29 +491,29 @@ contract AlchemistV3Test is Test {
 
         /// Tests for first liquidated User ///
 
-        // ensure depositedCollateral is reduced by (underlying collateral - (98% of 90% of underlying collateral i.e. ~ 88% of underlying))
-        vm.assertApproxEqAbs(debt, 1_786_384_339_890_553_451_687_383_955, minimumDepositOrWithdrawalLoss);
+        // ensure debt is reduced by the result of (collateral - y)/(debt - y) = minimum collateral ratio
+        vm.assertApproxEqAbs(debt, 902_543_749_272_360_263_668_397_815, minimumDepositOrWithdrawalLoss);
 
-        // ensure depositedCollateral is reduced by (underlying collateral - (90% of underlying collateral)) i.e. last recorded ltv = .9
-        vm.assertApproxEqAbs(depositedCollateral, 1_741_176_470_582_800_000_194_117_647, minimumDepositOrWithdrawalLoss);
+        // ensure depositedCollateral is reduced by the result of (collateral - y)/(debt - y) = minimum collateral ratio
+        vm.assertApproxEqAbs(depositedCollateral, 884_899_999_999_999_991_035_763_915, minimumDepositOrWithdrawalLoss);
 
         /// Tests for second liquidated User ///
 
         (depositedCollateral, debt) = alchemist.getCDP(anotherExternalUser);
 
-        // ensure debt is reduced by (underlying collateral - (98% of 90% of underlying collateral i.e. ~ 88% of underlying))
-        vm.assertApproxEqAbs(debt, 1_786_384_339_890_553_451_483_589_962, minimumDepositOrWithdrawalLoss);
+        // ensure debt is reduced by the result of (collateral - y)/(debt - y) = minimum collateral ratio
+        vm.assertApproxEqAbs(debt, 902_543_749_272_360_265_502_543_752, minimumDepositOrWithdrawalLoss);
 
-        // ensure depositedCollateral is reduced by (underlying collateral - (98% of 90% of underlying collateral i.e. ~ 88% of underlying))
-        vm.assertApproxEqAbs(depositedCollateral, 1_741_176_470_582_800_000_194_117_647, minimumDepositOrWithdrawalLoss);
+        // ensure depositedCollateral is reduced by the result of (collateral - y)/(debt - y) = minimum collateral ratio
+        vm.assertApproxEqAbs(depositedCollateral, 884_899_999_999_999_991_035_763_915, minimumDepositOrWithdrawalLoss);
 
         // Tests for Liquidator ///
 
-        // ensure assets liquidated is equal (collateral - (88% of collateral))
-        vm.assertApproxEqAbs(assets, 503_111_194_331_598_974_232_820_076, minimumDepositOrWithdrawalLoss);
+        // ensure assets liquidated is equal ~ 2 * result of (collateral - y)/(debt - y) = minimum collateral ratio for the users with similar positions
+        vm.assertApproxEqAbs(assets, 2_384_331_994_346_384_615_644_495_046, minimumDepositOrWithdrawalLoss);
 
-        // ensure liquidator fee is correct (10% of liquidation amount)
-        vm.assertApproxEqAbs(fee, 47_058_823_530_399_999_964_705_880, 1e18);
+        // ensure liquidator fee is correct (5% of liquidation amount)
+        vm.assertApproxEqAbs(fee, 106_200_000_000_000_000_758_426_768, 1e18);
 
         // liquidator gets correct amount of fee
         vm.assertApproxEqAbs(liquidatorPostTokenBalance, liquidatorPrevTokenBalance + fee, 1e18);
