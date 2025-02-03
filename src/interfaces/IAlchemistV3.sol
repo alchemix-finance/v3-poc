@@ -216,6 +216,15 @@ interface IAlchemistV3AdminActions {
     /// @param value The new minimum collateralization ratio.
     function setMinimumCollateralization(uint256 value) external;
 
+    /// @notice Set the global minimum collateralization ratio.
+    ///
+    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    ///
+    /// @notice Emits a {GlobalMinimumCollateralizationUpdated} event.
+    ///
+    /// @param value The new global minimum collateralization ratio.
+    function setGlobalMinimumCollateralization(uint256 value) external;
+
     /// @notice Set the collateralization lower bound ratio.
     ///
     /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
@@ -224,15 +233,6 @@ interface IAlchemistV3AdminActions {
     ///
     /// @param value The new collateralization lower bound ratio.
     function setCollateralizationLowerBound(uint256 value) external;
-
-    /// @notice Set the percentage of max LTV (minimumColleteralization) to adjust an account to, during a liquidation.
-    ///
-    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
-    ///
-    /// @notice Emits a {LiquidationTargetPercentUpdated} event.
-    ///
-    /// @param value The new minimum collateralization ratio.
-    function setLiquidationTargetPercent(uint256 value) external;
 
     /// @notice Set a new protocol fee receiver.
     ///
@@ -274,15 +274,15 @@ interface IAlchemistV3Events {
     /// @param minimumCollateralization The updated minimum collateralization.
     event MinimumCollateralizationUpdated(uint256 minimumCollateralization);
 
+    /// @notice Emitted when the global minimum collateralization is updated.
+    ///
+    /// @param globalMinimumCollateralization The updated global minimum collateralization.
+    event GlobalMinimumCollateralizationUpdated(uint256 globalMinimumCollateralization);
+
     /// @notice Emitted when the collateralization lower bound (for a liquidation) is updated.
     ///
     /// @param collateralizationLowerBound The updated collateralization lower bound.
     event CollateralizationLowerBoundUpdated(uint256 collateralizationLowerBound);
-
-    /// @notice Emitted when the liquidation percent of max LTV (minimum collateralization) is updated.
-    ///
-    /// @param liquidationTargetPercent The updated minimum collateralization.
-    event LiquidationTargetPercentUpdated(uint256 liquidationTargetPercent);
 
     /// @notice Emitted when the minting limit is updated.
     ///
@@ -392,16 +392,16 @@ interface IAlchemistV3State {
         address debtToken;
         // The ERC20 token used to represent the underlying token of the yield token.
         address underlyingToken;
-        // The token adapter used to retrieve the price between the yield and underlying tokens
+        // The token adapter used to retrieve the price between the yield and underlying tokens.
         address adapter;
         // The address(es) of the yield token(s) being deposited.
         address yieldToken;
-        // The minimum collateralization between 0 and 1 exclusive
+        // The minimum collateralization between 0 and 1 exclusive.
         uint256 minimumCollateralization;
-        // The minimum collateralization for liquidation eligibility. between 1 and minimumCollateralization inclusive
+        // The global minimum collateralization, >= minimumCollateralization.
+        uint256 globalMinimumCollateralization;
+        // The minimum collateralization for liquidation eligibility. between 1 and minimumCollateralization inclusive.
         uint256 collateralizationLowerBound;
-        // The percentage of max LTV (minimumColleteralization) to adjust an account to, during a liquidation.
-        uint256 liquidationTargetPercent;
         // The initial transmuter or transmuter buffer.
         address transmuter;
         // TODO Need to discuss how fees will be accumulated since harvests will no longer be done.
@@ -451,9 +451,6 @@ interface IAlchemistV3State {
     ///  @notice Gets collaterlization level that will result in an account being eligible for partial liquidation
     function collateralizationLowerBound() external view returns (uint256 ratio);
 
-    ///  @notice Gets specfied % of max LTV to reduce an account to for a liquidation
-    function liquidationTargetPercent() external view returns (uint256 percent);
-
     function underlyingDecimals() external view returns (uint8 decimals);
 
     function underlyingConversionFactor() external view returns (uint8 factor);
@@ -482,6 +479,15 @@ interface IAlchemistV3State {
     ///
     /// @return minimumCollateralization The minimum collateralization.
     function minimumCollateralization() external view returns (uint256 minimumCollateralization);
+
+    /// @notice Gets the global minimum collateralization.
+    ///
+    /// @notice Collateralization is determined by taking the total value of collateral deposited in the alchemist and dividing it by the total debt.
+    ///
+    /// @dev The value returned is a 18 decimal fixed point integer.
+    ///
+    /// @return globalMinimumCollateralization The global minimum collateralization.
+    function globalMinimumCollateralization() external view returns (uint256 globalMinimumCollateralization);
 
     /// @dev Returns the debt value of `amount` yield tokens.
     ///
