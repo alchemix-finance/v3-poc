@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT 
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
 /// @notice Contract initialization parameters.
@@ -17,6 +17,12 @@ struct InitializationParams {
     address transmuter;
     // TODO Need to discuss how fees will be accumulated since harvests will no longer be done.
     uint256 protocolFee;
+    // The address that receives liquidator fees.
+    uint256 liquidatorFee;
+    // The global minimum collateralization, >= minimumCollateralization.
+    uint256 globalMinimumCollateralization;
+    // The minimum collateralization for liquidation eligibility. between 1 and minimumCollateralization inclusive.
+    uint256 collateralizationLowerBound;
     // The address that receives protocol fees.
     address protocolFeeReceiver;
     // A limit used to prevent administrators from making minting functionality inoperable.
@@ -32,19 +38,14 @@ struct InitializationParams {
 struct Account {
     /// @notice User's debt
     uint256 debt;
-
     /// @notice User's collateral.
     uint256 collateralBalance;
-
     /// @notice User debt earmarked for redemption.
     uint256 earmarked;
-
     /// @notice Last weight of debt from most recent account sync.
     uint256 lastAccruedEarmarkWeight;
-
     /// @notice Last weight of debt from most recent account sync.
     uint256 lastAccruedRedemptionWeight;
-
     /// @notice allowances for minting alAssets
     mapping(address => uint256) mintAllowances;
 }
@@ -84,10 +85,7 @@ interface IAlchemistV3Actions {
     /// @param recipient  The owner of the account that will receive the resulting shares.
     ///
     /// @return debtValue The value of deposited tokens normalized to debt token value.
-    function deposit(
-        uint256 amount,
-        address recipient
-    ) external returns (uint256 debtValue);
+    function deposit(uint256 amount, address recipient) external returns (uint256 debtValue);
 
     /// @notice Withdraw `amount` yield tokens to `recipient`.
     ///
@@ -110,10 +108,7 @@ interface IAlchemistV3Actions {
     /// @param recipient  The address of the recipient.
     ///
     /// @return amountWithdrawn The number of yield tokens that were withdrawn to `recipient`.
-    function withdraw(
-        uint256 amount,
-        address recipient
-    ) external returns (uint256 amountWithdrawn);
+    function withdraw(uint256 amount, address recipient) external returns (uint256 amountWithdrawn);
 
     /// @notice Mint `amount` debt tokens.
     ///
@@ -130,10 +125,7 @@ interface IAlchemistV3Actions {
     ///
     /// @param amount    The amount of tokens to mint.
     /// @param recipient The address of the recipient.
-    function mint(
-        uint256 amount, 
-        address recipient
-    ) external;
+    function mint(uint256 amount, address recipient) external;
 
     /// @notice Mint `amount` debt tokens from the account owned by `owner` to `recipient`.
     ///
@@ -153,11 +145,7 @@ interface IAlchemistV3Actions {
     /// @param owner     The address of the owner of the account to mint from.
     /// @param amount    The amount of tokens to mint.
     /// @param recipient The address of the recipient.
-    function mintFrom(
-        address owner,
-        uint256 amount,
-        address recipient
-    ) external;
+    function mintFrom(address owner, uint256 amount, address recipient) external;
 
     /// @notice Burn `amount` debt tokens to credit the account owned by `recipient`.
     ///
@@ -200,10 +188,7 @@ interface IAlchemistV3Actions {
     /// @param recipient       The address of the recipient which will receive credit.
     ///
     /// @return amountRepaid The amount of tokens that were repaid.
-    function repay(
-        uint256 amount,
-        address recipient
-    ) external returns (uint256 amountRepaid);
+    function repay(uint256 amount, address recipient) external returns (uint256 amountRepaid);
 
     /// @notice Liquidates `owner` if the debt for account `owner` is greater than the underlying value of their collateral * LTV.
     ///
@@ -221,6 +206,22 @@ interface IAlchemistV3Actions {
     /// @return underlyingAmount    Underlying tokens sent to the transmuter.
     /// @return fee                 Underlying tokens sent to the liquidator.
     function liquidate(address owner) external returns (uint256 underlyingAmount, uint256 fee);
+
+    /// @notice Liquidates `owners` if the debt for account `owner` is greater than the underlying value of their collateral * LTV.
+    ///
+    /// @notice `owner` must be non-zero or this call will revert with an {IllegalArgument} error.
+    ///
+    ///
+    /// @notice **Example:**
+    /// @notice ```
+    /// @notice AlchemistV3(alchemistAddress).batchLiquidate([user1, user2]);
+    /// @notice ```
+    ///
+    /// @param owners    The address accounts to liquidate.
+    ///
+    /// @return totalAmountLiquidated    Equivalent amount of underlying tokens in yield tokens sent to the transmuter.
+    /// @return totalFees                Amount sent to liquidator in yield tokens.
+    function batchLiquidate(address[] memory owners) external returns (uint256 totalAmountLiquidated, uint256 totalFees);
 
     /// @notice Redeems `amount` debt from the alchemist in exchange for yield tokens sent to the transmuter.
     ///
@@ -264,6 +265,24 @@ interface IAlchemistV3AdminActions {
     /// @param value The new minimum collateralization ratio.
     function setMinimumCollateralization(uint256 value) external;
 
+    /// @notice Set the global minimum collateralization ratio.
+    ///
+    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    ///
+    /// @notice Emits a {GlobalMinimumCollateralizationUpdated} event.
+    ///
+    /// @param value The new global minimum collateralization ratio.
+    function setGlobalMinimumCollateralization(uint256 value) external;
+
+    /// @notice Set the collateralization lower bound ratio.
+    ///
+    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    ///
+    /// @notice Emits a {CollateralizationLowerBoundUpdated} event.
+    ///
+    /// @param value The new collateralization lower bound ratio.
+    function setCollateralizationLowerBound(uint256 value) external;
+
     /// @notice Set a new protocol fee receiver.
     ///
     /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
@@ -303,6 +322,16 @@ interface IAlchemistV3Events {
     ///
     /// @param minimumCollateralization The updated minimum collateralization.
     event MinimumCollateralizationUpdated(uint256 minimumCollateralization);
+
+    /// @notice Emitted when the global minimum collateralization is updated.
+    ///
+    /// @param globalMinimumCollateralization The updated global minimum collateralization.
+    event GlobalMinimumCollateralizationUpdated(uint256 globalMinimumCollateralization);
+
+    /// @notice Emitted when the collateralization lower bound (for a liquidation) is updated.
+    ///
+    /// @param collateralizationLowerBound The updated collateralization lower bound.
+    event CollateralizationLowerBoundUpdated(uint256 collateralizationLowerBound);
 
     /// @notice Emitted when the minting limit is updated.
     ///
@@ -373,6 +402,22 @@ interface IAlchemistV3Events {
     ///
     /// @param receiver   The address of the new receiver.
     event ProtocolFeeReceiverUpdated(address receiver);
+
+    /// @notice Emitted when account for 'owner' has been liquidated.
+    ///
+    /// @param owner        The address of the account liquidated
+    /// @param liquidator   The address of the liquidator
+    /// @param amount       The amount liquidated
+    /// @param fee          The liquidation fee sent to 'liquidator'
+    event Liquidated(address indexed owner, address liquidator, uint256 amount, uint256 fee);
+
+    /// @notice Emitted when account for 'owner' has been liquidated.
+    ///
+    /// @param owners       The address of the accounts liquidated
+    /// @param liquidator   The address of the liquidator
+    /// @param amount       The amount liquidated
+    /// @param fee          The liquidation fee sent to 'liquidator'
+    event BatchLiquidated(address[] indexed owners, address liquidator, uint256 amount, uint256 fee);
 }
 
 interface IAlchemistV3Immutables {
@@ -396,7 +441,7 @@ interface IAlchemistV3State {
     function cumulativeEarmarked() external view returns (uint256 earmarked);
 
     function lastEarmarkBlock() external view returns (uint256 block);
-    
+
     function totalDebt() external view returns (uint256 debt);
 
     function protocolFee() external view returns (uint256 fee);
@@ -429,6 +474,18 @@ interface IAlchemistV3State {
     ///
     /// @return minimumCollateralization The minimum collateralization.
     function minimumCollateralization() external view returns (uint256 minimumCollateralization);
+
+    /// @notice Gets the global minimum collateralization.
+    ///
+    /// @notice Collateralization is determined by taking the total value of collateral deposited in the alchemist and dividing it by the total debt.
+    ///
+    /// @dev The value returned is a 18 decimal fixed point integer.
+    ///
+    /// @return globalMinimumCollateralization The global minimum collateralization.
+    function globalMinimumCollateralization() external view returns (uint256 globalMinimumCollateralization);
+
+    ///  @notice Gets collaterlization level that will result in an account being eligible for partial liquidation
+    function collateralizationLowerBound() external view returns (uint256 ratio);
 
     /// @dev Returns the debt value of `amount` yield tokens.
     ///
@@ -498,10 +555,15 @@ interface IAlchemistV3State {
     /// @return maxDebt   Maximum debt that can be taken.
     function getMaxBorrowable(address user) external view returns (uint256 maxDebt);
 
+    /*     /// @dev Gets total underlying value locked in the alchemist.
+    ///
+    /// @return TVL   Total value locked.
+    function getTotalUnderlyingValue() external view returns (uint256 TVL); */
+
     /// @dev Gets total underlying value locked in the alchemist.
     ///
     /// @return TVL   Total value locked.
-    function getTotalUnderlyingValue() external view returns (uint256 TVL);
+    function getUnderlyingTVL() external view returns (uint256 TVL);
 
     /// @notice Gets the amount of debt tokens `spender` is allowed to mint on behalf of `owner`.
     ///
@@ -516,13 +578,7 @@ interface IAlchemistV3State {
     /// @return currentLimit The current amount of debt tokens that can be minted.
     /// @return rate         The maximum possible amount of tokens that can be liquidated at a time.
     /// @return maximum      The highest possible maximum amount of debt tokens that can be minted at a time.
-    function getMintLimitInfo()
-    external view 
-    returns (
-        uint256 currentLimit,
-        uint256 rate,
-        uint256 maximum
-    );
+    function getMintLimitInfo() external view returns (uint256 currentLimit, uint256 rate, uint256 maximum);
 }
 
 interface IAlchemistV3Errors {
@@ -535,11 +591,4 @@ interface IAlchemistV3Errors {
 
 /// @title  IAlchemistV3
 /// @author Alchemix Finance
-interface IAlchemistV3 is 
-    IAlchemistV3Actions,
-    IAlchemistV3AdminActions,
-    IAlchemistV3Errors,
-    IAlchemistV3Immutables,
-    IAlchemistV3Events,
-    IAlchemistV3State 
-{}
+interface IAlchemistV3 is IAlchemistV3Actions, IAlchemistV3AdminActions, IAlchemistV3Errors, IAlchemistV3Immutables, IAlchemistV3Events, IAlchemistV3State {}

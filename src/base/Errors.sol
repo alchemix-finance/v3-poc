@@ -15,3 +15,6 @@ error IllegalArgument();
 /// @notice An error used to indicate that an action could not be completed because the required amount of allowance has not
 ///         been approved.
 error InsufficientAllowance();
+
+/// @notice An error used to indicate that the function input data is missing
+error MissingInputData();

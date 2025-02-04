@@ -15,11 +15,16 @@ contract TestYieldToken is ITestYieldToken, ERC20 {
     address public override underlyingToken;
     uint8 private _decimals;
     uint256 public slippage;
+    uint256 public mockedSupply;
 
     constructor(address _underlyingToken) ERC20("Yield Token", "Yield Token") {
         underlyingToken = _underlyingToken;
         _decimals = TokenUtils.expectDecimals(_underlyingToken);
         slippage = 0;
+    }
+
+    function updateMockTokenSupply(uint256 value) external {
+        mockedSupply = value;
     }
 
     function decimals() public view override returns (uint8) {
@@ -65,8 +70,8 @@ contract TestYieldToken is ITestYieldToken, ERC20 {
 
     function _issueSharesForAmount(address to, uint256 amount) internal returns (uint256) {
         uint256 shares = 0;
-        if (totalSupply() > 0) {
-            shares = (amount * totalSupply()) / TokenUtils.safeBalanceOf(underlyingToken, address(this));
+        if (mockTokenSupply() > 0) {
+            shares = (amount * mockTokenSupply()) / TokenUtils.safeBalanceOf(underlyingToken, address(this));
         } else {
             shares = amount;
         }
@@ -76,9 +81,13 @@ contract TestYieldToken is ITestYieldToken, ERC20 {
     }
 
     function _shareValue(uint256 shares) internal view returns (uint256) {
-        if (totalSupply() == 0) {
+        if (mockTokenSupply() == 0) {
             return shares;
         }
-        return (shares * TokenUtils.safeBalanceOf(underlyingToken, address(this))) / totalSupply();
+        return (shares * TokenUtils.safeBalanceOf(underlyingToken, address(this))) / mockTokenSupply();
+    }
+
+    function mockTokenSupply() public view returns (uint256) {
+        return mockedSupply > 0 ? mockedSupply : totalSupply();
     }
 }

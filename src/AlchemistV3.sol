@@ -10,7 +10,7 @@ import "./libraries/Limiters.sol";
 import "./libraries/SafeCast.sol";
 import {Initializable} from "../lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
 
-import {Unauthorized, IllegalArgument, IllegalState} from "./base/Errors.sol";
+import {Unauthorized, IllegalArgument, IllegalState, MissingInputData} from "./base/Errors.sol";
 
 // TODO: Add sentinels
 // TODO: Add vault caps here
@@ -46,6 +46,11 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     uint256 public minimumCollateralization;
 
     /// @inheritdoc IAlchemistV3State
+    uint256 public collateralizationLowerBound;
+
+    uint256 public globalMinimumCollateralization;
+
+    /// @inheritdoc IAlchemistV3State
     uint256 public totalDebt;
 
     /// @inheritdoc IAlchemistV3State
@@ -56,10 +61,10 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
     /// @inheritdoc IAlchemistV3State
     address public underlyingToken;
-    
+
     /// @inheritdoc IAlchemistV3State
     address public yieldToken;
-    
+
     /// @inheritdoc IAlchemistV3State
     address public admin;
 
@@ -68,6 +73,9 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
     /// @inheritdoc IAlchemistV3State
     address public pendingAdmin;
+
+    // Fee earned by liquidator
+    uint256 public liquidatorFee;
 
     uint256 private _earmarkWeight;
 
@@ -95,18 +103,27 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
     function initialize(InitializationParams memory params) external initializer {
         _checkArgument(params.protocolFee <= BPS);
+        _checkArgument(params.liquidatorFee <= BPS);
+
         debtToken = params.debtToken;
         underlyingToken = params.underlyingToken;
         underlyingDecimals = TokenUtils.expectDecimals(params.underlyingToken);
-        underlyingConversionFactor = uint8(10)**(TokenUtils.expectDecimals(params.debtToken) - TokenUtils.expectDecimals(params.underlyingToken));
+        underlyingConversionFactor = uint8(10) ** (TokenUtils.expectDecimals(params.debtToken) - TokenUtils.expectDecimals(params.underlyingToken));
         yieldToken = params.yieldToken;
         minimumCollateralization = params.minimumCollateralization;
         admin = params.admin;
+        minimumCollateralization = params.minimumCollateralization;
+        globalMinimumCollateralization = params.globalMinimumCollateralization;
+        collateralizationLowerBound = params.collateralizationLowerBound;
+
         transmuter = params.transmuter;
         protocolFee = params.protocolFee;
+        liquidatorFee = params.liquidatorFee;
+
         protocolFeeReceiver = params.protocolFeeReceiver;
         lastEarmarkBlock = block.number;
         _mintingLimiter = Limiters.createLinearGrowthLimiter(params.mintingLimitMaximum, params.mintingLimitBlocks, params.mintingLimitMinimum);
+        TokenUtils.safeApprove(yieldToken, address(this), type(uint256).max);
     }
 
     // TODO: Add pause function and gaurdian role
@@ -146,29 +163,32 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         transmuter = value;
         emit TransmuterUpdated(value);
     }
-    
+
     /// @inheritdoc IAlchemistV3AdminActions
     function setMinimumCollateralization(uint256 value) external onlyAdmin {
         _checkArgument(value >= 1e18);
         minimumCollateralization = value;
-
         emit MinimumCollateralizationUpdated(value);
     }
 
+    /// @inheritdoc IAlchemistV3AdminActions
+    function setGlobalMinimumCollateralization(uint256 value) external onlyAdmin {
+        _checkArgument(value >= minimumCollateralization);
+        globalMinimumCollateralization = value;
+        emit GlobalMinimumCollateralizationUpdated(value);
+    }
+
+    /// @inheritdoc IAlchemistV3AdminActions
+    function setCollateralizationLowerBound(uint256 value) external onlyAdmin {
+        _checkArgument(value <= minimumCollateralization);
+        _checkArgument(value >= 1e18);
+        collateralizationLowerBound = value;
+        emit CollateralizationLowerBoundUpdated(value);
+    }
+
     /// @inheritdoc IAlchemistV3State
-    function getMintLimitInfo()
-        external view
-        returns (
-            uint256 currentLimit,
-            uint256 rate,
-            uint256 maximum
-        )
-    {
-        return (
-            _mintingLimiter.get(),
-            _mintingLimiter.rate,
-            _mintingLimiter.maximum
-        );
+    function getMintLimitInfo() external view returns (uint256 currentLimit, uint256 rate, uint256 maximum) {
+        return (_mintingLimiter.get(), _mintingLimiter.rate, _mintingLimiter.maximum);
     }
 
     /// @inheritdoc IAlchemistV3State
@@ -190,24 +210,19 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     }
 
     /// @inheritdoc IAlchemistV3State
-    function mintAllowance(address owner, address spender)
-        external view
-        returns (uint256)
-    {
+    function mintAllowance(address owner, address spender) external view returns (uint256) {
         Account storage account = _accounts[owner];
         return account.mintAllowances[spender];
     }
 
-    function getTotalUnderlyingValue() external view returns (uint256 TVL) {
-        uint256 yieldTokenTVL = IERC20(yieldToken).balanceOf(address(this));
-        uint256 yieldTokenTVLInUnderlying = convertYieldTokensToUnderlying(yieldTokenTVL);
-        TVL = yieldTokenTVLInUnderlying;
+    function getUnderlyingTVL() external view returns (uint256 TVL) {
+        TVL = _getTotalUnderlyingValue();
     }
 
     function totalValue(address owner) public view returns (uint256) {
         uint256 totalUnderlying;
         uint256 bal = _accounts[owner].collateralBalance;
-        if(bal > 0) totalUnderlying += convertYieldTokensToUnderlying(bal);
+        if (bal > 0) totalUnderlying += convertYieldTokensToUnderlying(bal);
 
         return normalizeUnderlyingTokensToDebt(totalUnderlying);
     }
@@ -245,7 +260,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
         // Transfer the yield tokens to msg.sender
         TokenUtils.safeTransfer(yieldToken, recipient, amount);
-        
+
         emit Withdraw(amount, recipient);
 
         return amount;
@@ -335,7 +350,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         uint256 yieldToDebt = convertYieldTokensToDebt(amount);
         uint256 credit = yieldToDebt > debt ? debt : yieldToDebt;
         uint256 creditToYield = convertDebtTokensToYield(credit);
-        
+
         _subDebt(recipient, credit);
 
         // Repay debt from earmarked amount of debt first
@@ -351,43 +366,42 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
     /// @inheritdoc IAlchemistV3Actions
     function liquidate(address owner) external override returns (uint256 underlyingAmount, uint256 fee) {
-    //     (underlyingAmount, fee) = _liquidate(owner);
-    //     if (underlyingAmount > 0) {
-    //         emit Liquidated(owner, msg.sender, underlyingAmount, fee);
-    //         return (underlyingAmount, fee);
-    //     } else {
-    //         // no liquidation amount returned, so no liquidation happened
-    //         revert LiquidationError();
-    //     }
-    // }
-
-    // /// @inheritdoc IAlchemistV3Actions
-    // function batchLiquidate(address[] memory owners) external returns (uint256 totalAmountLiquidated, uint256 totalFees) {
-    //     if (owners.length == 0) {
-    //         revert MissingInputData();
-    //     }
-
-    //     for (uint256 i = 0; i < owners.length; i++) {
-    //         address owner = owners[i];
-    //         (uint256 underlyingAmount, uint256 fee) = _liquidate(owner);
-    //         totalAmountLiquidated += underlyingAmount;
-    //         totalFees += fee;
-    //     }
-
-    //     if (totalAmountLiquidated > 0) {
-    //         emit BatchLiquidated(owners, msg.sender, totalAmountLiquidated, totalFees);
-    //         return (totalAmountLiquidated, totalFees);
-    //     } else {
-    //         // no total liquidation amount returned, so no liquidations happened
-    //         revert LiquidationError();
-    //     }
-        return(0,0);
+        (underlyingAmount, fee) = _liquidate(owner);
+        if (underlyingAmount > 0) {
+            emit Liquidated(owner, msg.sender, underlyingAmount, fee);
+            return (underlyingAmount, fee);
+        } else {
+            // no liquidation amount returned, so no liquidation happened
+            revert LiquidationError();
+        }
     }
 
     /// @inheritdoc IAlchemistV3Actions
-    function redeem(uint256 amount) external onlyTransmuter() {
+    function batchLiquidate(address[] memory owners) external returns (uint256 totalAmountLiquidated, uint256 totalFees) {
+        if (owners.length == 0) {
+            revert MissingInputData();
+        }
+
+        for (uint256 i = 0; i < owners.length; i++) {
+            address owner = owners[i];
+            (uint256 underlyingAmount, uint256 fee) = _liquidate(owner);
+            totalAmountLiquidated += underlyingAmount;
+            totalFees += fee;
+        }
+
+        if (totalAmountLiquidated > 0) {
+            emit BatchLiquidated(owners, msg.sender, totalAmountLiquidated, totalFees);
+            return (totalAmountLiquidated, totalFees);
+        } else {
+            // no total liquidation amount returned, so no liquidations happened
+            revert LiquidationError();
+        }
+    }
+
+    /// @inheritdoc IAlchemistV3Actions
+    function redeem(uint256 amount) external onlyTransmuter {
         _earmark();
-    
+
         _redemptionWeight += amount * FIXED_POINT_SCALAR / cumulativeEarmarked;
         cumulativeEarmarked -= amount;
         totalDebt -= amount;
@@ -423,13 +437,13 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     /// @inheritdoc IAlchemistV3State
     function convertYieldTokensToUnderlying(uint256 amount) public view returns (uint256) {
         uint8 decimals = TokenUtils.expectDecimals(yieldToken);
-        return (amount * ITokenAdapter(yieldToken).price()) / 10**decimals;
+        return (amount * ITokenAdapter(yieldToken).price()) / 10 ** decimals;
     }
 
     /// @inheritdoc IAlchemistV3State
     function convertUnderlyingTokensToYield(uint256 amount) public view returns (uint256) {
         uint8 decimals = TokenUtils.expectDecimals(yieldToken);
-        return amount * 10**decimals / ITokenAdapter(yieldToken).price();
+        return amount * 10 ** decimals / ITokenAdapter(yieldToken).price();
     }
 
     /// @inheritdoc IAlchemistV3State
@@ -464,70 +478,57 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         emit Mint(owner, amount, recipient);
     }
 
-    // /// @dev Liquidates position owned by `owner`
-    // ///
-    // /// @return underlyingAmount The underlying amount to be liquidated.
-    // /// @return fee The fee paid by `owner`.
-    // function _liquidate(address owner) internal returns (uint256 underlyingAmount, uint256 fee) {
-    //     // Sync current user debt before liquidation
-    //     _sync(owner);
-        
-    //     uint256 debt = _accounts[owner].debt;
-    //     if (debt == 0) {
-    //         return (0, 0);
-    //     }
+    /// @dev Fetches and applies the liquidation amount to account `owner` if the account collateral ratio touches `collateralizationLowerBound`.
+    /// @param owner  The owner of the account to to liquidate.
+    /// @return underlyingAmount  The liquidation amount removed from the account `owner`
+    /// @return fee The additional fee as a % of the liquidation amount to be sent to the liquidator
+    function _liquidate(address owner) internal returns (uint256 underlyingAmount, uint256 fee) {
+        // Sync current user debt before liquidation
+        _sync(owner);
+        uint256 debt = _accounts[owner].debt;
+        if (debt == 0) {
+            return (0, 0);
+        }
 
-    //     // owner collateral denominated in underlying value
-    //     uint256 collateralInUnderlying = totalValue(owner);
+        // owner collateral denominated in underlying value
+        uint256 collateralInUnderlying = totalValue(owner);
+        uint256 collateralizationRatio;
 
-    //     // the last ltv recorded from the last time the owner performed an ltv changing action
-    //     uint256 defaultLTV;
+        collateralizationRatio = collateralInUnderlying * FIXED_POINT_SCALAR / debt;
+        if (collateralizationRatio <= collateralizationLowerBound) {
+            uint256 globalCollateralizationRatio = _getTotalUnderlyingValue() * FIXED_POINT_SCALAR / totalDebt;
+            // amount is always <= debt
+            uint256 liquidationAmount = _getLiquidationAmount(collateralInUnderlying, debt, globalCollateralizationRatio);
+            uint256 updatedDebt = debt - liquidationAmount;
+            uint256 feeInUnderlying = liquidationAmount * liquidatorFee / BPS;
+            uint256 remainingCollateral = collateralInUnderlying >= liquidationAmount ? collateralInUnderlying - liquidationAmount : 0;
 
-    //     // default to 90% of Max LTV
-    //     if (_accounts[owner].defaultLTV == 0) {
-    //         defaultLTV = (9e17 * LTV) / FIXED_POINT_SCALAR;
-    //     } else {
-    //         defaultLTV = _accounts[owner].defaultLTV;
-    //     }
+            if (feeInUnderlying >= remainingCollateral) {
+                feeInUnderlying = remainingCollateral;
+            }
 
-    //     // the max debt allowable for the current ammount of collateral based on the max LTV
-    //     uint256 maxDebt = (collateralInUnderlying * LTV) / FIXED_POINT_SCALAR;
+            collateralInUnderlying = collateralInUnderlying >= liquidationAmount ? collateralInUnderlying - (liquidationAmount + feeInUnderlying) : 0;
+            underlyingAmount = liquidationAmount + feeInUnderlying;
+            uint256 adjustedCollateral = convertUnderlyingTokensToYield(collateralInUnderlying);
+            uint256 adjustedLiquidationAmount = convertUnderlyingTokensToYield(liquidationAmount);
+            fee = convertUnderlyingTokensToYield(feeInUnderlying);
 
-    //     if (debt > maxDebt) {
-    //         uint256 updatedCollateralInUnderlying = (collateralInUnderlying * defaultLTV) / FIXED_POINT_SCALAR;
-    //         uint256 liquidationAmount = collateralInUnderlying - updatedCollateralInUnderlying;
-    //         uint256 updatedDebt = debt - liquidationAmount;
-    //         uint256 feeInUnderlying;
+            // send liquidation amount - any fee to the transmuter. the transmuter only accepts yield tokens
+            // [Review] correctly handle user earmaked debt/reg debt update
+            TokenUtils.safeTransferFrom(yieldToken, address(this), transmuter, adjustedLiquidationAmount);
 
-    //         if (liquidationAmount > 0) {
-    //             feeInUnderlying = liquidationAmount * liquidatorFee / 10_000;
-    //             updatedCollateralInUnderlying -= feeInUnderlying;
-    //             underlyingAmount = liquidationAmount;
-    //         }
+            // update user debt
+            _accounts[owner].debt = updatedDebt;
 
-    //         uint256 updatedCollateral = convertUnderlyingTokensToYield(updatedCollateralInUnderlying);
-    //         uint256 liquidationAmountMinusFee = convertUnderlyingTokensToYield(liquidationAmount - feeInUnderlying);
-    //         fee = convertUnderlyingTokensToYield(feeInUnderlying);
+            // update user balance
+            _accounts[owner].collateralBalance = adjustedCollateral;
 
-    //         // send liquidation amount - any fee to the transmuter. the transmuter only accepts yield tokens
-    //         TokenUtils.safeTransferFrom(yieldToken, address(this), transmuter, liquidationAmountMinusFee);
-
-    //         // update user debt
-    //         _accounts[owner].debt = updatedDebt;
-
-    //         // update user balance
-    //         _accounts[owner].collateralBalance = updatedCollateral;
-
-    //         if (fee > 0) {
-    //             TokenUtils.safeTransfer(yieldToken, msg.sender, fee);
-    //         }
-    //     }
-
-    //     // Validate the owner's account to assure that the collateralization invariant is still held.
-    //     _validate(owner);
-
-    //     return (underlyingAmount, fee);
-    // }
+            if (fee > 0) {
+                TokenUtils.safeTransfer(yieldToken, msg.sender, fee);
+            }
+        }
+        return (underlyingAmount, fee);
+    }
 
     /// @dev Increases the debt by `amount` for the account owned by `owner`.
     /// @param owner   The address of the account owner.
@@ -613,7 +614,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     }
 
     function _earmark() internal {
-        if(block.number > lastEarmarkBlock) {
+        if (block.number > lastEarmarkBlock) {
             uint256 amount = ITransmuter(transmuter).queryGraph(lastEarmarkBlock + 1, block.number);
             cumulativeEarmarked += amount;
             _earmarkWeight += amount * FIXED_POINT_SCALAR / totalDebt;
@@ -625,7 +626,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     ///
     /// @param owner The address of the account owner.
     ///
-    /// @return The amount of debt that the account owned by `owner` will have after an update.    
+    /// @return The amount of debt that the account owned by `owner` will have after an update.
     function _calculateUnrealizedDebt(address owner) internal view returns (uint256) {
         // TODO: have this return total debt and earmarked debt
         Account storage account = _accounts[owner];
@@ -655,5 +656,35 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
             return true;
         }
         return false;
+    }
+
+    /// @dev Calculates the amount required to reduce an accounts debt and collateral by to achieve the target `minimumCollateralization` ratio.
+    /// @param collateral  The collateral amount for an account.
+    /// @param debt The debt amount for an account.
+    /// @param globalRatio  The global collaterilzation ratio for this alchemist.
+    /// @return liquidationAmount amount to be liquidated.
+    function _getLiquidationAmount(uint256 collateral, uint256 debt, uint256 globalRatio) internal returns (uint256 liquidationAmount) {
+        _checkArgument(minimumCollateralization > 1e18);
+        if (debt >= collateral) {
+            // fully liquidate bad debt
+            return debt;
+        }
+
+        if (globalRatio < globalMinimumCollateralization) {
+            // fully liquidate debt in high ltv global environment
+            return debt;
+        }
+        // otherwise, partially liquidate using formula : (collateral - amount)/(debt - amount) = globalMinimumCollateralization
+        uint256 expectedColltaeralForCurrentDebt = (debt * minimumCollateralization) / FIXED_POINT_SCALAR;
+        uint256 collateralDiff = expectedColltaeralForCurrentDebt - collateral;
+        uint256 ratioDiff = minimumCollateralization - 1e18;
+        liquidationAmount = collateralDiff * FIXED_POINT_SCALAR / ratioDiff;
+        return liquidationAmount;
+    }
+
+    function _getTotalUnderlyingValue() internal view returns (uint256 totalUnderlyingValue) {
+        uint256 yieldTokenTVL = IERC20(yieldToken).balanceOf(address(this));
+        uint256 yieldTokenTVLInUnderlying = convertYieldTokensToUnderlying(yieldTokenTVL);
+        totalUnderlyingValue = yieldTokenTVLInUnderlying;
     }
 }
