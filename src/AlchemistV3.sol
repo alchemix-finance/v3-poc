@@ -351,11 +351,10 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         uint256 credit = yieldToDebt > debt ? debt : yieldToDebt;
         uint256 creditToYield = convertDebtTokensToYield(credit);
 
-        uint256 unearmarkedDebt = account.debt - account.earmarked;
-
         _subDebt(recipient, credit);
 
-        if (unearmarkedDebt < credit) account.earmarked -= credit - unearmarkedDebt;
+        // Repay debt from earmarked amount of debt first
+        account.earmarked -= credit > account.earmarked ? account.earmarked : credit;
 
         // Transfer the repaid tokens to the transmuter.
         TokenUtils.safeTransferFrom(yieldToken, msg.sender, transmuter, creditToYield);
