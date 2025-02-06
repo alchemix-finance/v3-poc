@@ -1130,7 +1130,7 @@ contract AlchemistV3Test is Test {
         vm.startPrank(externalUser);
         vm.expectRevert(MissingInputData.selector);
 
-        // Batch Liquidation for 2 user addresses
+        // Batch Liquidation for  empty array
         address[] memory usersToLiquidate = new address[](0);
 
         (uint256 assets, uint256 fee) = alchemist.batchLiquidate(usersToLiquidate);
