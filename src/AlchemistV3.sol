@@ -4,13 +4,19 @@ pragma solidity 0.8.26;
 import "./interfaces/IAlchemistV3.sol";
 import "./interfaces/ITokenAdapter.sol";
 import "./interfaces/ITransmuter.sol";
+import "./interfaces/IAlchemistV3Position.sol";
 
 import "./libraries/TokenUtils.sol";
 import "./libraries/Limiters.sol";
 import "./libraries/SafeCast.sol";
-import {Initializable} from "../lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
 
+import {Initializable} from "../lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
 import {Unauthorized, IllegalArgument, IllegalState, MissingInputData} from "./base/Errors.sol";
+
+// NEW IMPORT: Import the NFT position contract.
+import "./AlchemistV3Position.sol";
+
+// TODO: Add vault caps
 
 /// @title  AlchemistV3
 /// @author Alchemix Finance
@@ -44,7 +50,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
     /// @inheritdoc IAlchemistV3State
     uint256 public collateralizationLowerBound;
-    
+
     /// @inheritdoc IAlchemistV3State
     uint256 public globalMinimumCollateralization;
 
@@ -62,10 +68,10 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
     /// @inheritdoc IAlchemistV3State
     address public underlyingToken;
-    
+
     /// @inheritdoc IAlchemistV3State
     address public yieldToken;
-    
+
     /// @inheritdoc IAlchemistV3State
     address public admin;
 
@@ -88,7 +94,12 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
     uint256 private _redemptionWeight;
 
-    mapping(address => Account) private _accounts;
+    // mapping(address => Account) private _accounts;
+
+    mapping(uint256 => Account) private _accounts;
+
+    /// @notice address of the AlchemistV3Position NFT contract.
+    address public alchemistPositionNFT;
 
     modifier onlyAdmin() {
         if (msg.sender != admin) {
@@ -120,7 +131,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         debtToken = params.debtToken;
         underlyingToken = params.underlyingToken;
         underlyingDecimals = TokenUtils.expectDecimals(params.underlyingToken);
-        underlyingConversionFactor = uint8(10)**(TokenUtils.expectDecimals(params.debtToken) - TokenUtils.expectDecimals(params.underlyingToken));
+        underlyingConversionFactor = uint8(10) ** (TokenUtils.expectDecimals(params.debtToken) - TokenUtils.expectDecimals(params.underlyingToken));
         yieldToken = params.yieldToken;
         minimumCollateralization = params.minimumCollateralization;
         globalMinimumCollateralization = params.globalMinimumCollateralization;
@@ -131,6 +142,15 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         protocolFeeReceiver = params.protocolFeeReceiver;
         liquidatorFee = params.liquidatorFee;
         lastEarmarkBlock = block.number;
+    }
+
+    /// @notice Emitted when a new Position NFT is minted.
+    event AlchemistV3PositionNFTMinted(address indexed to, uint256 indexed tokenId);
+
+    // Setter for the NFT position token, callable by admin.
+    function setAlchemistPositionNFT(address nft) external onlyAdmin {
+        require(nft != address(0), "AlchemistV3: invalid NFT position contract address");
+        alchemistPositionNFT = nft;
     }
 
     /// @inheritdoc IAlchemistV3AdminActions
@@ -192,7 +212,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         gaurdians[gaurdian] = isActive;
         emit GaurdianSet(gaurdian, isActive);
     }
-    
+
     /// @inheritdoc IAlchemistV3AdminActions
     function setMinimumCollateralization(uint256 value) external onlyAdmin {
         _checkArgument(value >= 1e18);
@@ -221,7 +241,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         depositsPaused = isPaused;
         emit DepositsPaused(isPaused);
     }
-    
+
     /// @inheritdoc IAlchemistV3AdminActions
     function pauseLoans(bool isPaused) external onlyAdminOrGaurdian {
         loansPaused = isPaused;
@@ -229,9 +249,9 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     }
 
     /// @inheritdoc IAlchemistV3State
-    function getCDP(address owner) external view returns (uint256, uint256, uint256) {
-        (uint256 debt, uint256 earmarked) = _calculateUnrealizedDebt(owner);
-        return (_accounts[owner].collateralBalance, debt, earmarked);
+    function getCDP(uint256 tokenId) external view returns (uint256, uint256, uint256) {
+        (uint256 debt, uint256 earmarked) = _calculateUnrealizedDebt(tokenId);
+        return (_accounts[tokenId].collateralBalance, debt, earmarked);
     }
 
     /// @inheritdoc IAlchemistV3State
@@ -240,37 +260,34 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     }
 
     /// @inheritdoc IAlchemistV3State
-    function getMaxBorrowable(address owner) external view returns (uint256) {
-        uint256 debtValueOfCollateral = convertYieldTokensToDebt(_accounts[owner].collateralBalance);
-        (uint256 debt, ) = _calculateUnrealizedDebt(owner);
+    function getMaxBorrowable(uint256 tokenId) external view returns (uint256) {
+        uint256 debtValueOfCollateral = convertYieldTokensToDebt(_accounts[tokenId].collateralBalance);
+        (uint256 debt,) = _calculateUnrealizedDebt(tokenId);
 
         return (debtValueOfCollateral * FIXED_POINT_SCALAR / minimumCollateralization) - debt;
     }
 
     /// @inheritdoc IAlchemistV3State
-    function mintAllowance(address owner, address spender)
-        external view
-        returns (uint256)
-    {
-        Account storage account = _accounts[owner];
+    function mintAllowance(uint256 ownerTokenId, address spender) external view returns (uint256) {
+        Account storage account = _accounts[ownerTokenId];
         return account.mintAllowances[spender];
     }
 
     /// @inheritdoc IAlchemistV3State
     function getTotalUnderlyingValue() external view returns (uint256) {
-        return  _getTotalUnderlyingValue();
+        return _getTotalUnderlyingValue();
     }
 
     /// @inheritdoc IAlchemistV3State
-    function totalValue(address owner) public view returns (uint256) {
+    function totalValue(uint256 tokenId) public view returns (uint256) {
         uint256 totalUnderlying;
-        uint256 bal = _accounts[owner].collateralBalance;
-        if(bal > 0) totalUnderlying += convertYieldTokensToUnderlying(bal);
+        uint256 bal = _accounts[tokenId].collateralBalance;
+        if (bal > 0) totalUnderlying += convertYieldTokensToUnderlying(bal);
 
         return normalizeUnderlyingTokensToDebt(totalUnderlying);
     }
-
-    /// @inheritdoc IAlchemistV3Actions
+    /* 
+     /// @inheritdoc IAlchemistV3Actions
     function deposit(uint256 amount, address recipient) external returns (uint256) {
         _checkArgument(recipient != address(0));
         _checkArgument(amount > 0);
@@ -284,81 +301,113 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         emit Deposit(amount, recipient);
 
         return convertYieldTokensToDebt(amount);
+    }  */
+
+    function deposit(uint256 amount, address recipient, uint256 id) external returns (uint256) {
+        _checkArgument(recipient != address(0));
+        _checkArgument(amount > 0);
+        _checkState(depositsPaused == false);
+        _checkArgument(alchemistPositionNFT != address(0));
+        uint256 tokenId = id;
+
+        // Only mint a new position if the id is 0
+        if (tokenId == 0) {
+            tokenId = IAlchemistV3Position(alchemistPositionNFT).mint(recipient);
+            emit AlchemistV3PositionNFTMinted(recipient, tokenId);
+        } else {
+            // revert if sender is trying to update another tokenId's position
+            _checkArgument(IAlchemistV3Position(alchemistPositionNFT).ownerOf(tokenId) == msg.sender);
+        }
+
+        _accounts[tokenId].collateralBalance += amount;
+
+        // Transfer tokens from msg.sender now that the internal storage updates have been committed.
+        TokenUtils.safeTransferFrom(yieldToken, msg.sender, address(this), amount);
+
+        emit Deposit(amount, recipient);
+
+        return convertYieldTokensToDebt(amount);
     }
 
     /// @inheritdoc IAlchemistV3Actions
-    function withdraw(uint256 amount, address recipient) external returns (uint256) {
+    function withdraw(uint256 amount, address recipient, uint256 tokenId) external returns (uint256) {
         _checkArgument(msg.sender != address(0));
         _checkArgument(amount > 0);
+        // revert if sender is trying to update another tokenId's position
+        _checkArgument(IAlchemistV3Position(alchemistPositionNFT).ownerOf(tokenId) == msg.sender);
 
         _earmark();
 
-        _sync(msg.sender);
+        _sync(tokenId);
 
-        _checkArgument(_accounts[msg.sender].collateralBalance >= amount);
+        _checkArgument(_accounts[tokenId].collateralBalance >= amount);
 
-        _accounts[msg.sender].collateralBalance -= amount;
+        _accounts[tokenId].collateralBalance -= amount;
 
         // Assure that the collateralization invariant is still held.
-        _validate(msg.sender);
+        _validate(tokenId);
 
         // Transfer the yield tokens to msg.sender
         TokenUtils.safeTransfer(yieldToken, recipient, amount);
-        
+
         emit Withdraw(amount, recipient);
 
         return amount;
     }
 
     /// @inheritdoc IAlchemistV3Actions
-    function mint(uint256 amount, address recipient) external {
+    function mint(uint256 amount, address recipient, uint256 tokenId) external {
         _checkArgument(msg.sender != address(0));
         _checkArgument(amount > 0);
         _checkState(loansPaused == false);
+        // revert if sender is trying to update another tokenId's position
+        _checkArgument(IAlchemistV3Position(alchemistPositionNFT).ownerOf(tokenId) == msg.sender);
 
         // Query transmuter and earmark global debt
         _earmark();
 
         // Sync current user debt before more is taken
-        _sync(msg.sender);
+        _sync(tokenId);
 
         // Mint tokens to recipient
-        _mint(msg.sender, amount, recipient);
+        _mint(tokenId, amount, recipient);
     }
 
     /// @inheritdoc IAlchemistV3Actions
-    function mintFrom(address owner, uint256 amount, address recipient) external {
+    function mintFrom(uint256 tokenId, uint256 amount, address recipient) external {
         _checkArgument(amount > 0);
         _checkArgument(recipient != address(0));
         _checkState(loansPaused == false);
 
         // Preemptively try and decrease the minting allowance. This will save gas when the allowance is not sufficient.
-        _decreaseMintAllowance(owner, msg.sender, amount);
+        _decreaseMintAllowance(tokenId, msg.sender, amount);
 
         // Query transmuter and earmark global debt
         _earmark();
 
         // Sync current user debt before more is taken
-        _sync(owner);
+        _sync(tokenId);
 
-        // Mint tokens from the owner's account to the recipient.
-        _mint(owner, amount, recipient);
+        // Mint tokens from the tokenId's account to the recipient.
+        _mint(tokenId, amount, recipient);
     }
 
     /// @inheritdoc IAlchemistV3Actions
-    function burn(uint256 amount, address recipient) external returns (uint256) {
+    function burn(uint256 amount, uint256 tokenIdToBurn) external returns (uint256) {
         _checkArgument(amount > 0);
-        _checkArgument(recipient != address(0));
+        //  _checkArgument(recipient != address(0));
+        // revert if sender is trying to update another tokenId's position
+        _checkArgument(IAlchemistV3Position(alchemistPositionNFT).ownerOf(tokenIdToBurn) == msg.sender);
 
         // Query transmuter and earmark global debt
         _earmark();
 
         // Sync current user debt before more is taken
-        _sync(recipient);
+        _sync(tokenIdToBurn);
 
         uint256 debt;
         // Burning alAssets can only repay unearmarked debt
-        _checkState((debt = _accounts[recipient].debt - _accounts[recipient].earmarked) > 0);
+        _checkState((debt = _accounts[tokenIdToBurn].debt - _accounts[tokenIdToBurn].earmarked) > 0);
 
         uint256 credit = amount > debt ? debt : amount;
 
@@ -366,25 +415,25 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         TokenUtils.safeBurnFrom(debtToken, msg.sender, credit);
 
         // Update the recipient's debt.
-        _subDebt(recipient, credit);
+        _subDebt(tokenIdToBurn, credit);
 
-        emit Burn(msg.sender, credit, recipient);
+        // emit Burn(msg.sender, credit, recipient);
 
         return credit;
     }
 
     /// @inheritdoc IAlchemistV3Actions
-    function repay(uint256 amount, address recipient) external returns (uint256) {
+    function repay(uint256 amount, address recipient, uint256 recipientTokenId) external returns (uint256) {
         _checkArgument(amount > 0);
-        _checkArgument(recipient != address(0));
+        // _checkArgument(recipient != address(0));
 
-        Account storage account = _accounts[recipient];
+        Account storage account = _accounts[recipientTokenId];
 
         // Query transmuter and earmark global debt
         _earmark();
 
         // Sync current user debt before deciding how much is available to be repaid
-        _sync(recipient);
+        _sync(recipientTokenId);
 
         uint256 debt;
         // Burning yieldTokens will pay off all types of debt
@@ -394,26 +443,26 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         uint256 credit = yieldToDebt > debt ? debt : yieldToDebt;
         uint256 creditToYield = convertDebtTokensToYield(credit);
 
-        // Transfer the repaid tokens to the transmuter.
-        TokenUtils.safeTransferFrom(yieldToken, msg.sender, transmuter, creditToYield);
-        
-        _subDebt(recipient, credit);
+        _subDebt(recipientTokenId, credit);
 
         // Repay debt from earmarked amount of debt first
         account.earmarked -= credit > account.earmarked ? account.earmarked : credit;
 
-        emit Repay(msg.sender, amount, recipient, creditToYield);
+        // Transfer the repaid tokens to the transmuter.
+        TokenUtils.safeTransferFrom(yieldToken, msg.sender, transmuter, creditToYield);
+
+        // emit Repay(msg.sender, amount, recipientTokenId, creditToYield);
 
         return creditToYield;
     }
 
     /// @inheritdoc IAlchemistV3Actions
-    function liquidate(address owner) external override returns (uint256 underlyingAmount, uint256 fee) {
+    function liquidate(uint256 tokenId) external override returns (uint256 underlyingAmount, uint256 fee) {
         _earmark();
 
-        (underlyingAmount, fee) = _liquidate(owner);
+        (underlyingAmount, fee) = _liquidate(tokenId);
         if (underlyingAmount > 0) {
-            emit Liquidated(owner, msg.sender, underlyingAmount, fee);
+            // emit Liquidated(tokenId, msg.sender, underlyingAmount, fee);
             return (underlyingAmount, fee);
         } else {
             // no liquidation amount returned, so no liquidation happened
@@ -422,22 +471,22 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     }
 
     /// @inheritdoc IAlchemistV3Actions
-    function batchLiquidate(address[] memory owners) external returns (uint256 totalAmountLiquidated, uint256 totalFees) {
+    function batchLiquidate(uint256[] memory tokenIds) external returns (uint256 totalAmountLiquidated, uint256 totalFees) {
         _earmark();
 
-        if (owners.length == 0) {
+        if (tokenIds.length == 0) {
             revert MissingInputData();
         }
 
-        for (uint256 i = 0; i < owners.length; i++) {
-            address owner = owners[i];
-            (uint256 underlyingAmount, uint256 fee) = _liquidate(owner);
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            uint256 tokenId = tokenIds[i];
+            (uint256 underlyingAmount, uint256 fee) = _liquidate(tokenId);
             totalAmountLiquidated += underlyingAmount;
             totalFees += fee;
         }
 
         if (totalAmountLiquidated > 0) {
-            emit BatchLiquidated(owners, msg.sender, totalAmountLiquidated, totalFees);
+            // emit BatchLiquidated(owners, msg.sender, totalAmountLiquidated, totalFees);
             return (totalAmountLiquidated, totalFees);
         } else {
             // no total liquidation amount returned, so no liquidations happened
@@ -446,13 +495,11 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     }
 
     /// @inheritdoc IAlchemistV3Actions
-    function redeem(uint256 amount) external onlyTransmuter() {
+    function redeem(uint256 amount) external onlyTransmuter {
         _earmark();
-    
-        _redemptionWeight += amount * FIXED_POINT_SCALAR / cumulativeEarmarked;
-        
-        cumulativeEarmarked -= amount;
 
+        _redemptionWeight += amount * FIXED_POINT_SCALAR / cumulativeEarmarked;
+        cumulativeEarmarked -= amount;
         totalDebt -= amount;
 
         uint256 collateralToRedeem = convertDebtTokensToYield(amount);
@@ -463,15 +510,15 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     }
 
     /// @inheritdoc IAlchemistV3Actions
-    function poke(address owner) external {
-        _earmark();
-
-        _sync(owner);
+    function poke(uint256 tokenId) external {
+        _sync(tokenId);
     }
 
     /// @inheritdoc IAlchemistV3Actions
-    function approveMint(address spender, uint256 amount) external {
-        _approveMint(msg.sender, spender, amount);
+    function approveMint(address spender, uint256 amount, uint256 tokenId) external {
+        // revert if sender is trying to update another owners position config
+        _checkArgument(IAlchemistV3Position(alchemistPositionNFT).ownerOf(tokenId) == msg.sender);
+        _approveMint(tokenId, spender, amount);
     }
 
     /// @inheritdoc IAlchemistV3State
@@ -487,13 +534,13 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     /// @inheritdoc IAlchemistV3State
     function convertYieldTokensToUnderlying(uint256 amount) public view returns (uint256) {
         uint8 decimals = TokenUtils.expectDecimals(yieldToken);
-        return (amount * ITokenAdapter(yieldToken).price()) / 10**decimals;
+        return (amount * ITokenAdapter(yieldToken).price()) / 10 ** decimals;
     }
 
     /// @inheritdoc IAlchemistV3State
     function convertUnderlyingTokensToYield(uint256 amount) public view returns (uint256) {
         uint8 decimals = TokenUtils.expectDecimals(yieldToken);
-        return amount * 10**decimals / ITokenAdapter(yieldToken).price();
+        return amount * 10 ** decimals / ITokenAdapter(yieldToken).price();
     }
 
     /// @inheritdoc IAlchemistV3State
@@ -506,40 +553,40 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         return amount / underlyingConversionFactor;
     }
 
-    /// @dev Mints debt tokens to `recipient` using the account owned by `owner`.
-    /// @param owner     The owner of the account to mint from.
+    /// @dev Mints debt tokens to `recipient` using the account owned by `tokenId`.
+    /// @param tokenId     The tokenId of the account to mint from.
     /// @param amount    The amount to mint.
     /// @param recipient The recipient of the minted debt tokens.
-    function _mint(address owner, uint256 amount, address recipient) internal {
-        _addDebt(owner, amount);
+    function _mint(uint256 tokenId, uint256 amount, address recipient) internal {
+        _addDebt(tokenId, amount);
 
-        // Validate the owner's account to assure that the collateralization invariant is still held.
-        _validate(owner);
+        // Validate the tokenId's account to assure that the collateralization invariant is still held.
+        _validate(tokenId);
 
         // Mint the debt tokens to the recipient.
         TokenUtils.safeMint(debtToken, recipient, amount);
 
-        emit Mint(owner, amount, recipient);
+        emit Mint(tokenId, amount, recipient);
     }
 
-    /// @dev Fetches and applies the liquidation amount to account `owner` if the account collateral ratio touches `collateralizationLowerBound`.
-    /// @param owner  The owner of the account to to liquidate.
-    /// @return debtAmount  The liquidation amount removed from the account `owner`.
+    /// @dev Fetches and applies the liquidation amount to account `tokenId` if the account collateral ratio touches `collateralizationLowerBound`.
+    /// @param tokenId  The tokenId of the account to to liquidate.
+    /// @return debtAmount  The liquidation amount removed from the account `tokenId`.
     /// @return fee The additional fee as a % of the liquidation amount to be sent to the liquidator
-    function _liquidate(address owner) internal returns (uint256 debtAmount, uint256 fee) {
+    function _liquidate(uint256 tokenId) internal returns (uint256 debtAmount, uint256 fee) {
         // Get updated earmarking data and sync current user debt before liquidation
         // If a redemption gets triggered before this liquidation call in the block then the users account may fall back into the healthy range
-        _sync(owner);
+        _sync(tokenId);
 
-        Account storage account = _accounts[owner];
+        Account storage account = _accounts[tokenId];
 
         uint256 debt = account.debt;
         if (debt == 0) {
             return (0, 0);
         }
 
-        // owner collateral denominated in underlying value
-        uint256 collateralInDebt = totalValue(owner);
+        // tokenId collateral denominated in underlying value
+        uint256 collateralInDebt = totalValue(tokenId);
         uint256 collateralizationRatio;
 
         collateralizationRatio = collateralInDebt * FIXED_POINT_SCALAR / debt;
@@ -563,7 +610,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
             TokenUtils.safeTransfer(yieldToken, transmuter, adjustedLiquidationAmount);
 
             // Update users debt
-            _subDebt(owner, liquidationAmount);
+            _subDebt(tokenId, liquidationAmount);
 
             // Liquidate debt from earmarked amount of debt first
             account.earmarked -= liquidationAmount > account.earmarked ? account.earmarked : liquidationAmount;
@@ -579,43 +626,43 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         return (debtAmount, fee);
     }
 
-    /// @dev Increases the debt by `amount` for the account owned by `owner`.
+    /// @dev Increases the debt by `amount` for the account owned by `tokenId`.
     ///
-    /// @param owner   The address of the account owner.
+    /// @param tokenId   The address of the account tokenId.
     /// @param amount  The amount to increase the debt by.
-    function _addDebt(address owner, uint256 amount) internal {
-        Account storage account = _accounts[owner];
+    function _addDebt(uint256 tokenId, uint256 amount) internal {
+        Account storage account = _accounts[tokenId];
         account.debt += amount;
         totalDebt += amount;
     }
 
-    /// @dev Increases the debt by `amount` for the account owned by `owner`.
-    /// @param owner   The address of the account owner.
+    /// @dev Increases the debt by `amount` for the account owned by `tokenId`.
+    /// @param tokenId   The address of the account tokenId.
     /// @param amount  The amount to increase the debt by.
-    function _subDebt(address owner, uint256 amount) internal {
-        Account storage account = _accounts[owner];
+    function _subDebt(uint256 tokenId, uint256 amount) internal {
+        Account storage account = _accounts[tokenId];
         account.debt -= amount;
         totalDebt -= amount;
     }
 
-    /// @dev Set the mint allowance for `spender` to `amount` for the account owned by `owner`.
+    /// @dev Set the mint allowance for `spender` to `amount` for the account owned by `tokenId`.
     ///
-    /// @param owner   The address of the account owner.
+    /// @param ownerTokenId   The tokenId of of the account granting approval.
     /// @param spender The address of the spender.
     /// @param amount  The amount of debt tokens to set the mint allowance to.
-    function _approveMint(address owner, address spender, uint256 amount) internal {
-        Account storage account = _accounts[owner];
+    function _approveMint(uint256 ownerTokenId, address spender, uint256 amount) internal {
+        Account storage account = _accounts[ownerTokenId];
         account.mintAllowances[spender] = amount;
-        emit ApproveMint(owner, spender, amount);
+        // emit ApproveMint(ownerTokenId, spender, amount);
     }
 
-    /// @dev Decrease the mint allowance for `spender` by `amount` for the account owned by `owner`.
+    /// @dev Decrease the mint allowance for `spender` by `amount` for the account owned by `tokenId`.
     ///
-    /// @param owner   The address of the account owner.
+    /// @param ownerTokenId   The address of the account tokenId.
     /// @param spender The address of the spender.
     /// @param amount  The amount of debt tokens to decrease the mint allowance by.
-    function _decreaseMintAllowance(address owner, address spender, uint256 amount) internal {
-        Account storage account = _accounts[owner];
+    function _decreaseMintAllowance(uint256 ownerTokenId, address spender, uint256 amount) internal {
+        Account storage account = _accounts[ownerTokenId];
         account.mintAllowances[spender] -= amount;
     }
 
@@ -637,17 +684,17 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         }
     }
 
-    /// @dev Checks that the account owned by `owner` is properly collateralized.
+    /// @dev Checks that the account owned by `tokenId` is properly collateralized.
     /// @dev If the account is undercollateralized then this will revert with an {Undercollateralized} error.
     ///
-    /// @param owner The address of the account owner.
-    function _validate(address owner) internal view {
-        if (_isUnderCollateralized(owner)) revert Undercollateralized();
+    /// @param tokenId The address of the account tokenId.
+    function _validate(uint256 tokenId) internal view {
+        if (_isUnderCollateralized(tokenId)) revert Undercollateralized();
     }
 
     /// @dev Update the user's earmarked and redeemed debt amounts.
-    function _sync(address owner) internal {
-        Account storage account = _accounts[owner];
+    function _sync(uint256 tokenId) internal {
+        Account storage account = _accounts[tokenId];
 
         // Earmark User Debt
         uint256 debtToEarmark = account.debt * (_earmarkWeight - account.lastAccruedEarmarkWeight) / FIXED_POINT_SCALAR;
@@ -665,7 +712,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     }
 
     function _earmark() internal {
-        if(block.number > lastEarmarkBlock) {
+        if (block.number > lastEarmarkBlock) {
             uint256 amount = ITransmuter(transmuter).queryGraph(lastEarmarkBlock + 1, block.number);
             cumulativeEarmarked += amount;
             _earmarkWeight += amount * FIXED_POINT_SCALAR / totalDebt;
@@ -673,39 +720,39 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         }
     }
 
-    /// @dev Gets the amount of debt that the account owned by `owner` will have after an sync occurs.
+    /// @dev Gets the amount of debt that the account owned by `tokenId` will have after an sync occurs.
     ///
-    /// @param owner The address of the account owner.
+    /// @param tokenId The token id of the account tokenId.
     ///
-    /// @return The amount of debt that the account owned by `owner` will have after an update.    
+    /// @return The amount of debt that the account owned by `tokenId` will have after an update.
     /// @return The amount of debt which is currently earmarked fro redemption.
-    function _calculateUnrealizedDebt(address owner) internal view returns (uint256, uint256) {
-        Account storage account = _accounts[owner];
+    function _calculateUnrealizedDebt(uint256 tokenId) internal view returns (uint256, uint256) {
+        Account storage account = _accounts[tokenId];
 
         uint256 amount;
-        uint256 earmarkWeightCopy = _earmarkWeight;
+        uint256 earmarkWeightCopy;
 
         if (block.number > lastEarmarkBlock) {
             amount = ITransmuter(transmuter).queryGraph(lastEarmarkBlock + 1, block.number);
-            earmarkWeightCopy += (amount * FIXED_POINT_SCALAR / totalDebt);
+            earmarkWeightCopy = _earmarkWeight + (amount * FIXED_POINT_SCALAR / totalDebt);
         }
 
         uint256 debtToEarmark = account.debt * (earmarkWeightCopy - account.lastAccruedEarmarkWeight) / FIXED_POINT_SCALAR;
         uint256 earmarkedCopy = account.earmarked + debtToEarmark;
         uint256 earmarkToRedeem = earmarkedCopy * (_redemptionWeight - account.lastAccruedRedemptionWeight) / FIXED_POINT_SCALAR;
 
-        return (account.debt - earmarkToRedeem, earmarkedCopy - earmarkToRedeem);
+        return (account.debt - earmarkToRedeem, earmarkedCopy);
     }
 
-    /// @dev Checks that the account owned by `owner` is properly collateralized.
+    /// @dev Checks that the account owned by `tokenId` is properly collateralized.
     /// @dev If the account is undercollateralized then this will revert with an {Undercollateralized} error.
     ///
-    /// @param owner The address of the account owner.
-    function _isUnderCollateralized(address owner) internal view returns (bool) {
-        uint256 debt = _accounts[owner].debt;
+    /// @param tokenId The address of the account tokenId.
+    function _isUnderCollateralized(uint256 tokenId) internal view returns (bool) {
+        uint256 debt = _accounts[tokenId].debt;
         if (debt == 0) return false;
 
-        uint256 collateralization = totalValue(owner) * FIXED_POINT_SCALAR / debt;
+        uint256 collateralization = totalValue(tokenId) * FIXED_POINT_SCALAR / debt;
         if (collateralization < minimumCollateralization) {
             return true;
         }

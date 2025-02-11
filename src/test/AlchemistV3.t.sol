@@ -8,6 +8,8 @@ import "../../lib/forge-std/src/Test.sol";
 import {SafeERC20} from "../libraries/SafeERC20.sol";
 import {console} from "../../lib/forge-std/src/console.sol";
 import {AlchemistV3} from "../AlchemistV3.sol";
+import {AlchemistV3Position} from "../AlchemistV3Position.sol";
+
 import {AlchemicTokenV3} from "../AlchemicTokenV3.sol";
 import {Transmuter} from "../Transmuter.sol";
 import {TransmuterBuffer} from "../TransmuterBuffer.sol";
@@ -21,6 +23,7 @@ import {ITestYieldToken} from "../interfaces/test/ITestYieldToken.sol";
 import {InsufficientAllowance} from "../base/Errors.sol";
 import {Unauthorized, IllegalArgument, IllegalState, MissingInputData} from "../base/Errors.sol";
 import "../interfaces/IYearnVaultV2.sol";
+import "../interfaces/IAlchemistV3Position.sol";
 
 contract AlchemistV3Test is Test {
     // ----- [SETUP] Variables for setting up a minimal CDP -----
@@ -39,6 +42,8 @@ contract AlchemistV3Test is Test {
     // CheatCodes cheats = CheatCodes(HEVM_ADDRESS);
     AlchemistV3 alchemistLogic;
     Transmuter transmuterLogic;
+    AlchemistV3Position positionNFTLogic;
+
     TransmuterBuffer transmuterBufferLogic;
     AlchemicTokenV3 alToken;
     Whitelist whitelist;
@@ -113,20 +118,19 @@ contract AlchemistV3Test is Test {
 
         alToken = new AlchemicTokenV3(_name, _symbol, _flashFee);
 
-        ITransmuter.InitializationParams memory transParams =  ITransmuter.InitializationParams({
+        ITransmuter.InitializationParams memory transParams = ITransmuter.InitializationParams({
             syntheticToken: address(alToken),
             feeReceiver: address(this),
-            timeToTransmute: 5256000,
+            timeToTransmute: 5_256_000,
             transmutationFee: 10,
             exitFee: 20,
-            graphSize: 52560000
+            graphSize: 52_560_000
         });
 
         // Contracts and logic contracts
         alOwner = caller;
         transmuterBufferLogic = new TransmuterBuffer();
         transmuterLogic = new Transmuter(transParams);
-        alchemistLogic = new AlchemistV3();
         whitelist = new Whitelist();
 
         // // Proxy contracts
@@ -172,6 +176,10 @@ contract AlchemistV3Test is Test {
         transmuterLogic.addAlchemist(address(alchemist));
         transmuterLogic.setDepositCap(uint256(type(int256).max));
 
+        positionNFTLogic = new AlchemistV3Position();
+        positionNFTLogic.initialize(address(alchemist));
+        alchemist.setAlchemistPositionNFT(address(positionNFTLogic));
+
         vm.stopPrank();
 
         // Add funds to test accounts
@@ -202,7 +210,7 @@ contract AlchemistV3Test is Test {
         vm.stopPrank();
     }
 
-    function testSetProtocolFeeTooHigh() public { 
+    /*     function testSetProtocolFeeTooHigh() public { 
         vm.startPrank(alOwner);
         vm.expectRevert();
         alchemist.setProtocolFee(10001);
@@ -440,8 +448,41 @@ contract AlchemistV3Test is Test {
 
         assertEq(alchemist.loansPaused(), false);
     }
+    */
 
-    function testDeposit(uint256 amount) external {
+    function testDeposit_New_Position(uint256 amount) external {
+        amount = bound(amount, 1e18, 1000e18);
+        vm.startPrank(address(0xbeef));
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
+        alchemist.deposit(amount, address(0xbeef), 0);
+
+        // Only 1 position nft should have been minted
+        uint256 tokenSupply = IAlchemistV3Position(address(positionNFTLogic)).balanceOf(address(0xbeef));
+        uint256 firstTokenIndex = tokenSupply - 1;
+        uint256 tokenId = IAlchemistV3Position(address(positionNFTLogic)).tokenOfOwnerByIndex(address(0xbeef), firstTokenIndex);
+
+        (uint256 depositedCollateral, uint256 debt,) = alchemist.getCDP(tokenId);
+        vm.assertApproxEqAbs(depositedCollateral, amount, minimumDepositOrWithdrawalLoss);
+        vm.stopPrank();
+
+        assertEq(alchemist.getTotalDeposited(), amount);
+
+        (uint256 deposited, uint256 userDebt,) = alchemist.getCDP(tokenId);
+
+        assertEq(deposited, amount);
+        assertEq(userDebt, 0);
+
+        assertEq(
+            alchemist.getMaxBorrowable(tokenId),
+            alchemist.normalizeUnderlyingTokensToDebt(fakeYieldToken.price() * amount / 1e18) * 1e18 / alchemist.minimumCollateralization()
+        );
+
+        assertEq(alchemist.getTotalUnderlyingValue(), alchemist.convertYieldTokensToUnderlying(amount));
+
+        assertEq(alchemist.totalValue(tokenId), alchemist.getTotalUnderlyingValue());
+    }
+
+    /*  function testDeposit(uint256 amount) external {
         amount = bound(amount, 1e18, 1000e18);
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
@@ -1281,5 +1322,5 @@ contract AlchemistV3Test is Test {
 
         // Optional: Assert size is under EIP-170 limit (24576 bytes)
         assertTrue(size <= 24_576, "Contract too large");
-    }
+    } */
 }

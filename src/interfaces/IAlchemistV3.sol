@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT 
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
 /// @notice Contract initialization parameters.
@@ -32,19 +32,14 @@ struct InitializationParams {
 struct Account {
     /// @notice User's debt
     uint256 debt;
-
     /// @notice User's collateral.
     uint256 collateralBalance;
-
     /// @notice User debt earmarked for redemption.
     uint256 earmarked;
-
     /// @notice Last weight of debt from most recent account sync.
     uint256 lastAccruedEarmarkWeight;
-
     /// @notice Last weight of debt from most recent account sync.
     uint256 lastAccruedRedemptionWeight;
-
     /// @notice allowances for minting alAssets
     mapping(address => uint256) mintAllowances;
 }
@@ -54,12 +49,14 @@ interface IAlchemistV3Actions {
     ///
     /// @param spender The address that will be approved to mint.
     /// @param amount  The amount of tokens that `spender` will be allowed to mint.
-    function approveMint(address spender, uint256 amount) external;
+    /// @param tokenId The tokenId of account granting approval.
+
+    function approveMint(address spender, uint256 amount, uint256 tokenId) external;
 
     /// @notice Synchronizes the state of the account owned by `owner`.
     ///
-    /// @param owner The owner of the account to synchronize.
-    function poke(address owner) external;
+    /// @param tokenId   The tokenId of account
+    function poke(uint256 tokenId) external;
 
     /// @notice Deposit a yield token into a user's account.
     ///
@@ -82,12 +79,9 @@ interface IAlchemistV3Actions {
     ///
     /// @param amount     The amount of yield tokens to deposit.
     /// @param recipient  The owner of the account that will receive the resulting shares.
-    ///
+    /// @param id The id of account
     /// @return debtValue The value of deposited tokens normalized to debt token value.
-    function deposit(
-        uint256 amount,
-        address recipient
-    ) external returns (uint256 debtValue);
+    function deposit(uint256 amount, address recipient, uint256 id) external returns (uint256 debtValue);
 
     /// @notice Withdraw `amount` yield tokens to `recipient`.
     ///
@@ -101,19 +95,17 @@ interface IAlchemistV3Actions {
     /// @notice ```
     /// @notice address ydai = 0xdA816459F1AB5631232FE5e97a05BBBb94970c95;
     /// @notice (uint256 LTV, ) = AlchemistV3(alchemistAddress).getLoanTerms(msg.sender);
-    /// @notice (uint256 yieldTokens, ) = AlchemistV3(alchemistAddress).getCDP(msg.sender);
+    /// @notice (uint256 yieldTokens, ) = AlchemistV3(alchemistAddress).getCDP(tokenId);
     /// @notice uint256 maxWithdrawableTokens = (AlchemistV3(alchemistAddress).LTV() - LTV) * yieldTokens / LTV;
     /// @notice AlchemistV3(alchemistAddress).withdraw(maxWithdrawableTokens, msg.sender);
     /// @notice ```
     ///
     /// @param amount     The number of tokens to withdraw.
     /// @param recipient  The address of the recipient.
+    /// @param tokenId The tokenId of account.
     ///
     /// @return amountWithdrawn The number of yield tokens that were withdrawn to `recipient`.
-    function withdraw(
-        uint256 amount,
-        address recipient
-    ) external returns (uint256 amountWithdrawn);
+    function withdraw(uint256 amount, address recipient, uint256 tokenId) external returns (uint256 amountWithdrawn);
 
     /// @notice Mint `amount` debt tokens.
     ///
@@ -130,10 +122,8 @@ interface IAlchemistV3Actions {
     ///
     /// @param amount    The amount of tokens to mint.
     /// @param recipient The address of the recipient.
-    function mint(
-        uint256 amount, 
-        address recipient
-    ) external;
+    /// @param tokenId The tokenId of account.
+    function mint(uint256 amount, address recipient, uint256 tokenId) external;
 
     /// @notice Mint `amount` debt tokens from the account owned by `owner` to `recipient`.
     ///
@@ -150,14 +140,11 @@ interface IAlchemistV3Actions {
     /// @notice AlchemistV3(alchemistAddress).mintFrom(msg.sender, amtDebt, msg.sender);
     /// @notice ```
     ///
+    /// @param tokenId   The tokenId of account.
     /// @param owner     The address of the owner of the account to mint from.
     /// @param amount    The amount of tokens to mint.
     /// @param recipient The address of the recipient.
-    function mintFrom(
-        address owner,
-        uint256 amount,
-        address recipient
-    ) external;
+    function mintFrom(uint256 tokenId, address owner, uint256 amount, address recipient) external;
 
     /// @notice Burn `amount` debt tokens to credit the account owned by `recipient`.
     ///
@@ -176,10 +163,10 @@ interface IAlchemistV3Actions {
     /// @notice ```
     ///
     /// @param amount    The amount of tokens to burn.
-    /// @param recipient The address of the recipient.
+    /// @param tokenIdToBurn   The tokenId of account to burn.
     ///
     /// @return amountBurned The amount of tokens that were burned.
-    function burn(uint256 amount, address recipient) external returns (uint256 amountBurned);
+    function burn(uint256 amount, uint256 tokenIdToBurn) external returns (uint256 amountBurned);
 
     /// @notice Repay `amount` debt using yield tokens to credit the account owned by `recipient`.
     ///
@@ -198,12 +185,10 @@ interface IAlchemistV3Actions {
     ///
     /// @param amount          The amount of the yield tokens to repay with.
     /// @param recipient       The address of the recipient which will receive credit.
+    /// @param recipientTokenId   The tokenId of account to be repaid
     ///
     /// @return amountRepaid The amount of tokens that were repaid.
-    function repay(
-        uint256 amount,
-        address recipient
-    ) external returns (uint256 amountRepaid);
+    function repay(uint256 amount, address recipient, uint256 recipientTokenId) external returns (uint256 amountRepaid);
 
     /// @notice Liquidates `owner` if the debt for account `owner` is greater than the underlying value of their collateral * LTV.
     ///
@@ -216,11 +201,11 @@ interface IAlchemistV3Actions {
     /// @notice AlchemistV2(alchemistAddress).liquidate(user);
     /// @notice ```
     ///
-    /// @param owner    The address account to liquidate.
+    /// @param tokenId   The tokenId of account
     ///
     /// @return underlyingAmount    Underlying tokens sent to the transmuter.
     /// @return fee                 Underlying tokens sent to the liquidator.
-    function liquidate(address owner) external returns (uint256 underlyingAmount, uint256 fee);
+    function liquidate(uint256 tokenId) external returns (uint256 underlyingAmount, uint256 fee);
 
     /// @notice Liquidates `owners` if the debt for account `owner` is greater than the underlying value of their collateral * LTV.
     ///
@@ -232,11 +217,11 @@ interface IAlchemistV3Actions {
     /// @notice AlchemistV3(alchemistAddress).batchLiquidate([user1, user2]);
     /// @notice ```
     ///
-    /// @param owners    The address accounts to liquidate.
+    /// @param tokenIds   The tokenId of each account
     ///
     /// @return totalAmountLiquidated    Equivalent amount of underlying tokens in yield tokens sent to the transmuter.
     /// @return totalFees                Amount sent to liquidator in yield tokens.
-    function batchLiquidate(address[] memory owners) external returns (uint256 totalAmountLiquidated, uint256 totalFees);
+    function batchLiquidate(uint256[] memory tokenIds) external returns (uint256 totalAmountLiquidated, uint256 totalFees);
 
     /// @notice Redeems `amount` debt from the alchemist in exchange for yield tokens sent to the transmuter.
     ///
@@ -438,10 +423,10 @@ interface IAlchemistV3Events {
 
     /// @notice Emitted when `amount` debt tokens are minted to `recipient` using the account owned by `owner`.
     ///
-    /// @param owner     The address of the account owner.
+    /// @param tokenId     The tokenId of the account owner.
     /// @param amount    The amount of tokens that were minted.
     /// @param recipient The recipient of the minted tokens.
-    event Mint(address indexed owner, uint256 amount, address recipient);
+    event Mint(uint256 tokenId, uint256 amount, address recipient);
 
     /// @notice Emitted when `sender` burns `amount` debt tokens to grant credit to `recipient`.
     ///
@@ -524,7 +509,7 @@ interface IAlchemistV3State {
     function cumulativeEarmarked() external view returns (uint256 earmarked);
 
     function lastEarmarkBlock() external view returns (uint256 block);
-    
+
     function totalDebt() external view returns (uint256 debt);
 
     function protocolFee() external view returns (uint256 fee);
@@ -541,9 +526,9 @@ interface IAlchemistV3State {
 
     function yieldToken() external view returns (address token);
 
-    function depositsPaused() external view returns(bool isPaused);
+    function depositsPaused() external view returns (bool isPaused);
 
-    function loansPaused() external view returns(bool isPaused);
+    function loansPaused() external view returns (bool isPaused);
 
     /// @notice Gets the address of the pending administrator.
     ///
@@ -575,7 +560,7 @@ interface IAlchemistV3State {
 
     ///  @notice Gets collaterlization level that will result in an account being eligible for partial liquidation
     function collateralizationLowerBound() external view returns (uint256 ratio);
-    
+
     /// @dev Returns the debt value of `amount` yield tokens.
     ///
     /// @param amount   The amount to convert.
@@ -608,21 +593,21 @@ interface IAlchemistV3State {
     /// @param amount   The amount to convert.
     function normalizeDebtTokensToUnderlying(uint256 amount) external view returns (uint256);
 
-    /// @dev Get information about CDP of `owner`
+    /// @dev Get information about CDP of tokenId
     ///
-    /// @param  owner   The owner of the account.
+    /// @param  tokenId   The token Id of the account.
     ///
     /// @return collateral  Collateral balance.
     /// @return debt        Current debt.
     /// @return earmarked   Current debt that is earmarked for redemption.
-    function getCDP(address owner) external view returns (uint256 collateral, uint256 debt, uint256 earmarked);
+    function getCDP(uint256 tokenId) external view returns (uint256 collateral, uint256 debt, uint256 earmarked);
 
-    /// @dev Gets total value of `owner` in units of underlying tokens.
+    /// @dev Gets total value of account managed by `tokenId` in units of underlying tokens.
     ///
-    /// @param owner    Owner of the account to query.
+    /// @param tokenId    tokenId of the account to query.
     ///
     /// @return value   Underlying value of the account.
-    function totalValue(address owner) external view returns (uint256 value);
+    function totalValue(uint256 tokenId) external view returns (uint256 value);
 
     // /// @dev Gets total value of `owner` in units of underlying tokens.
     // ///
@@ -640,10 +625,10 @@ interface IAlchemistV3State {
 
     /// @dev Gets maximum debt that `user` can borrow from their CDP.
     ///
-    /// @param user     Account to query.
+    /// @param tokenId    tokenId of the account to query.
     ///
     /// @return maxDebt   Maximum debt that can be taken.
-    function getMaxBorrowable(address user) external view returns (uint256 maxDebt);
+    function getMaxBorrowable(uint256 tokenId) external view returns (uint256 maxDebt);
 
     /// @dev Gets total underlying value locked in the alchemist.
     ///
@@ -652,11 +637,11 @@ interface IAlchemistV3State {
 
     /// @notice Gets the amount of debt tokens `spender` is allowed to mint on behalf of `owner`.
     ///
-    /// @param owner   The owner of the account.
+    /// @param ownerTokenId    tokenId of the account to query.
     /// @param spender The address which is allowed to mint on behalf of `owner`.
     ///
     /// @return allowance The amount of debt tokens that `spender` can mint on behalf of `owner`.
-    function mintAllowance(address owner, address spender) external view returns (uint256 allowance);
+    function mintAllowance(uint256 ownerTokenId, address spender) external view returns (uint256 allowance);
 }
 
 interface IAlchemistV3Errors {
@@ -675,11 +660,4 @@ interface IAlchemistV3Errors {
 
 /// @title  IAlchemistV3
 /// @author Alchemix Finance
-interface IAlchemistV3 is 
-    IAlchemistV3Actions,
-    IAlchemistV3AdminActions,
-    IAlchemistV3Errors,
-    IAlchemistV3Immutables,
-    IAlchemistV3Events,
-    IAlchemistV3State 
-{}
+interface IAlchemistV3 is IAlchemistV3Actions, IAlchemistV3AdminActions, IAlchemistV3Errors, IAlchemistV3Immutables, IAlchemistV3Events, IAlchemistV3State {}
