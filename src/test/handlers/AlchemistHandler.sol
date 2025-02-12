@@ -7,7 +7,7 @@ import {StdUtils} from "forge-std/StdUtils.sol";
 
 import "../../AlchemistV3.sol";
 
-contract AlchemistHandler is CommonBase, StdCheats, StdUtils{
+contract AlchemistHandler is CommonBase, StdCheats, StdUtils {
     AlchemistV3 private _alchemist;
 
     constructor(AlchemistV3 alchemist) {
@@ -17,22 +17,22 @@ contract AlchemistHandler is CommonBase, StdCheats, StdUtils{
     // TODO: Bind amounts to each function and randomly select a yield token for deposits and withdraw
 
     function deposit(uint256 amount) public {
-        _alchemist.deposit(amount, address(this));
+        _alchemist.deposit(amount, address(this), 0);
     }
 
     function withdraw(uint256 amount) public {
-        _alchemist.withdraw(amount, address(this));
+        _alchemist.withdraw(amount, address(this), 1);
     }
 
     function mint(uint256 amount) public {
-        _alchemist.mint(amount, address(this));
+        _alchemist.mint(1, amount, address(this));
     }
 
     function repay(uint256 amount) public {
-        _alchemist.repay(amount, address(this));
+        _alchemist.repay(amount, 1);
     }
 
     function liquidate() public {
-        _alchemist.liquidate(address(this));
+        _alchemist.liquidate(1);
     }
 }

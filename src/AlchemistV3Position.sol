@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {Initializable} from "../lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
-// import {ERC721BurnableUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721BurnableUpgradeable.sol";
-// import {IERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
-import {ERC721EnumerableUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
+import {IAlchemistV3Position} from "./interfaces/IAlchemistV3Position.sol";
 
 /**
  * @title AlchemistV3Position
  * @notice ERC721 position token for AlchemistV3, where only the AlchemistV3 contract
  *         is allowed to mint and burn tokens. Minting returns a unique token id.
  */
-contract AlchemistV3Position is Initializable, ERC721EnumerableUpgradeable {
+contract AlchemistV3Position is ERC721Enumerable {
     /// @notice The only address allowed to mint and burn position tokens.
     address public alchemist;
 
@@ -25,14 +24,12 @@ contract AlchemistV3Position is Initializable, ERC721EnumerableUpgradeable {
     }
 
     /**
-     * @notice Initializes the contract.
-     * @param alchemistAddress The address of the AlchemistV3 contract that is allowed to mint and burn positions.
+     * @notice Constructor that sets the Alchemist address and initializes the ERC721 token.
+     * @param alchemist_ The address of the Alchemist contract.
      */
-    function initialize(address alchemistAddress) external initializer {
-        require(alchemistAddress != address(0), "AlchemistV3Position: alchemist address is zero");
-        __ERC721_init("AlchemistV3Position", "ALCV3");
-        alchemist = alchemistAddress;
-        _currentTokenId = 0;
+    constructor(address alchemist_) ERC721("AlchemistV3Position", "ALCV3") {
+        require(alchemist_ != address(0), "AlchemistV3Position: alchemist address is zero");
+        alchemist = alchemist_;
     }
 
     /**
@@ -49,12 +46,14 @@ contract AlchemistV3Position is Initializable, ERC721EnumerableUpgradeable {
         return tokenId;
     }
 
-    /**
-     * @notice Burns the NFT with token id `tokenId`.
-     * @dev Only callable by the AlchemistV3 contract.
-     * @param tokenId The id of the token to burn.
-     */
-    function burn(uint256 tokenId) public override onlyAlchemist {
+    function burn(uint256 tokenId) public onlyAlchemist {
         _burn(tokenId);
+    }
+
+    /**
+     * @notice Override supportsInterface to resolve inheritance conflicts.
+     */
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721Enumerable) returns (bool) {
+        return super.supportsInterface(interfaceId);
     }
 }
