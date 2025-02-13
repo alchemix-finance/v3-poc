@@ -746,21 +746,23 @@ contract AlchemistV3Test is Test {
         uint256 amount = 100e18;
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        alchemist.deposit(amount, address(0xbeef));
-        alchemist.mint((amount / 2), address(0xbeef));
+        alchemist.deposit(amount, address(0xbeef), 0);
+        // a single position nft would have been minted to 0xbeef
+        uint256 tokenId = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
+        alchemist.mint(tokenId, (amount / 2), address(0xbeef));
         vm.assertApproxEqAbs(IERC20(alToken).balanceOf(address(0xbeef)), (amount / 2), minimumDepositOrWithdrawalLoss);
         vm.stopPrank();
 
         vm.roll(block.number + 2_600_000);
 
-        (uint256 deposited, uint256 userDebt,) = alchemist.getCDP(address(0xbeef));
+        (uint256 deposited, uint256 userDebt,) = alchemist.getCDP(tokenId);
 
         assertEq(userDebt, (amount / 2) + ((amount / 2) * 100 / 10_000));
 
         // Total debt should not change since data is not actually written yet
         assertEq(alchemist.totalDebt(), (amount / 2));
 
-        alchemist.poke(address(0xbeef));
+        alchemist.poke(tokenId);
 
         assertEq(alchemist.totalDebt(), (amount / 2) + ((amount / 2) * 100 / 10_000));
     }
@@ -773,21 +775,23 @@ contract AlchemistV3Test is Test {
         uint256 amount = 100e18;
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        alchemist.deposit(amount, address(0xbeef));
-        alchemist.mint((amount / 2), address(0xbeef));
+        alchemist.deposit(amount, address(0xbeef), 0);
+        // a single position nft would have been minted to 0xbeef
+        uint256 tokenId = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
+        alchemist.mint(tokenId, (amount / 2), address(0xbeef));
         vm.assertApproxEqAbs(IERC20(alToken).balanceOf(address(0xbeef)), (amount / 2), minimumDepositOrWithdrawalLoss);
         vm.stopPrank();
 
         vm.roll(block.number + 2_600_000 / 2);
 
-        (uint256 deposited, uint256 userDebt,) = alchemist.getCDP(address(0xbeef));
+        (uint256 deposited, uint256 userDebt,) = alchemist.getCDP(tokenId);
 
         assertEq(userDebt, (amount / 2) + ((amount / 2) * 100 / 10_000 / 2));
 
         // Total debt should not change since data is not actually written yet
         assertEq(alchemist.totalDebt(), (amount / 2));
 
-        alchemist.poke(address(0xbeef));
+        alchemist.poke(tokenId);
 
         assertEq(alchemist.totalDebt(), (amount / 2) + ((amount / 2) * 100 / 10_000 / 2));
     }
@@ -796,26 +800,29 @@ contract AlchemistV3Test is Test {
         vm.prank(alOwner);
         // 1%
         alchemist.setProtocolFee(100);
-
         uint256 amount = 100e18;
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        alchemist.deposit(amount, address(0xbeef));
-        alchemist.mint((amount / 2), address(0xbeef));
+        alchemist.deposit(amount, address(0xbeef), 0);
+        // a single position nft would have been minted to 0xbeef
+        uint256 tokenIdFor0xBeef = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
+        alchemist.mint(tokenIdFor0xBeef, (amount / 2), address(0xbeef));
         vm.assertApproxEqAbs(IERC20(alToken).balanceOf(address(0xbeef)), (amount / 2), minimumDepositOrWithdrawalLoss);
         vm.stopPrank();
 
         vm.startPrank(externalUser);
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        alchemist.deposit(amount, externalUser);
-        alchemist.mint((amount / 2), externalUser);
+        alchemist.deposit(amount, externalUser, 0);
+        // a single position nft would have been minted to 0xbeef
+        uint256 tokenIdForExternalUser = TokenTestHelpher.getFirstTokenId(externalUser, address(alchemistNFT));
+        alchemist.mint(tokenIdForExternalUser, (amount / 2), externalUser);
         vm.assertApproxEqAbs(IERC20(alToken).balanceOf(externalUser), (amount / 2), minimumDepositOrWithdrawalLoss);
         vm.stopPrank();
 
         vm.roll(block.number + 2_600_000);
 
-        (uint256 deposited, uint256 userDebt,) = alchemist.getCDP(address(0xbeef));
-        (uint256 deposited2, uint256 userDebt2,) = alchemist.getCDP(externalUser);
+        (uint256 deposited, uint256 userDebt,) = alchemist.getCDP(tokenIdFor0xBeef);
+        (uint256 deposited2, uint256 userDebt2,) = alchemist.getCDP(tokenIdForExternalUser);
 
         assertEq(userDebt, (amount / 2) + ((amount / 2) * 100 / 10_000));
         assertEq(userDebt2, (amount / 2) + ((amount / 2) * 100 / 10_000));
@@ -823,7 +830,7 @@ contract AlchemistV3Test is Test {
         // Total debt should not change since data is not actually written yet
         assertEq(alchemist.totalDebt(), (amount));
 
-        alchemist.poke(address(0xbeef));
+        alchemist.poke(tokenIdFor0xBeef);
         // After poking 0xbeef an earmark should trigger and update total debt for everyones fees
         assertEq(alchemist.totalDebt(), (amount) + ((amount) * 100 / 10_000));
     }
@@ -836,22 +843,26 @@ contract AlchemistV3Test is Test {
         uint256 amount = 100e18;
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        alchemist.deposit(amount, address(0xbeef));
-        alchemist.mint((amount / 2), address(0xbeef));
+        alchemist.deposit(amount, address(0xbeef), 0);
+        // a single position nft would have been minted to 0xbeef
+        uint256 tokenIdFor0xBeef = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
+        alchemist.mint(tokenIdFor0xBeef, (amount / 2), address(0xbeef));
         vm.assertApproxEqAbs(IERC20(alToken).balanceOf(address(0xbeef)), (amount / 2), minimumDepositOrWithdrawalLoss);
         vm.stopPrank();
 
         vm.startPrank(externalUser);
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        alchemist.deposit(amount, externalUser);
-        alchemist.mint((amount / 2), externalUser);
+        alchemist.deposit(amount, externalUser, 0);
+        // a single position nft would have been minted to 0xbeef
+        uint256 tokenIdForExternalUser = TokenTestHelpher.getFirstTokenId(externalUser, address(alchemistNFT));
+        alchemist.mint(tokenIdForExternalUser, (amount / 2), externalUser);
         vm.assertApproxEqAbs(IERC20(alToken).balanceOf(externalUser), (amount / 2), minimumDepositOrWithdrawalLoss);
         vm.stopPrank();
 
         vm.roll(block.number + 2_600_000 / 2);
 
-        (uint256 deposited, uint256 userDebt,) = alchemist.getCDP(address(0xbeef));
-        (uint256 deposited2, uint256 userDebt2,) = alchemist.getCDP(externalUser);
+        (uint256 deposited, uint256 userDebt,) = alchemist.getCDP(tokenIdFor0xBeef);
+        (uint256 deposited2, uint256 userDebt2,) = alchemist.getCDP(tokenIdForExternalUser);
 
         assertEq(userDebt, (amount / 2) + ((amount / 2) * 100 / 10_000 / 2));
         assertEq(userDebt2, (amount / 2) + ((amount / 2) * 100 / 10_000 / 2));
@@ -859,7 +870,7 @@ contract AlchemistV3Test is Test {
         // Total debt should not change since data is not actually written yet
         assertEq(alchemist.totalDebt(), (amount));
 
-        alchemist.poke(address(0xbeef));
+        alchemist.poke(tokenIdFor0xBeef);
         // After poking 0xbeef an earmark should trigger and update total debt for everyones fees
         assertEq(alchemist.totalDebt(), (amount) + ((amount / 2) * 100 / 10_000));
     }
@@ -918,14 +929,13 @@ contract AlchemistV3Test is Test {
         assertEq(fakeYieldToken.balanceOf(address(0xbeef)), preRepayBalance - repaidAmount);
     }
 
-    ///////////////////
-    /*function testRepayWithEarmarkedDebt() external {
+    function testRepayWithEarmarkedDebt() external {
         uint256 amount = 100e18;
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        alchemist.deposit(amount, address(0xbeef),0);
+        alchemist.deposit(amount, address(0xbeef), 0);
         // a single position nft would have been minted to 0xbeef
-        uint256 tokenId  = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
+        uint256 tokenId = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
         alchemist.mint(tokenId, (amount / 2), address(0xbeef));
         vm.stopPrank();
 
@@ -934,7 +944,7 @@ contract AlchemistV3Test is Test {
         transmuterLogic.createRedemption(address(alchemist), address(fakeYieldToken), 50e18);
         vm.stopPrank();
 
-        vm.roll(block.number + 5256000);
+        vm.roll(block.number + 5_256_000);
 
         vm.prank(address(0xbeef));
         alchemist.repay(25e18, tokenId);
@@ -944,16 +954,16 @@ contract AlchemistV3Test is Test {
         // All debt is earmarked at this point so these values should be the same
         assertEq(debt, (amount / 2) - (amount / 4));
 
-        assertEq(earmarked, (amount / 2)  - (amount / 4));
-    } 
+        assertEq(earmarked, (amount / 2) - (amount / 4));
+    }
 
     function testRepayWithEarmarkedDebtPartial() external {
         uint256 amount = 100e18;
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        alchemist.deposit(amount, address(0xbeef),0);
+        alchemist.deposit(amount, address(0xbeef), 0);
         // a single position nft would have been minted to 0xbeef
-        uint256 tokenId  = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
+        uint256 tokenId = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
         alchemist.mint(tokenId, (amount / 2), address(0xbeef));
         vm.stopPrank();
 
@@ -962,12 +972,12 @@ contract AlchemistV3Test is Test {
         transmuterLogic.createRedemption(address(alchemist), address(fakeYieldToken), 50e18);
         vm.stopPrank();
 
-        vm.roll(block.number + 5256000 / 2);
+        vm.roll(block.number + 5_256_000 / 2);
 
         vm.prank(address(0xbeef));
         alchemist.repay(25e18, tokenId);
 
-        (uint256 collateral, uint256 debt, uint256 earmarked) =alchemist.getCDP(tokenId);
+        (uint256 collateral, uint256 debt, uint256 earmarked) = alchemist.getCDP(tokenId);
 
         // 50 debt / 2 - 25 repaid
         assertEq(debt, (amount / 2) - (amount / 4));
@@ -975,8 +985,7 @@ contract AlchemistV3Test is Test {
         // Half of all debt was earmarked which is 25
         // Repay of 25 will pay off all earmarked debt
         assertEq(earmarked, 0);
-    }*/
-    ///////////////////
+    }
 
     function testRepayZeroAmount() external {
         uint256 amount = 100e18;
@@ -1110,15 +1119,14 @@ contract AlchemistV3Test is Test {
         vm.stopPrank();
     }
 
-    ///
-    /*function testBurnWithEarmarkedDebt() external {
+    function testBurnWithEarmarkedDebt() external {
         uint256 amount = 100e18;
 
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        alchemist.deposit(amount, address(0xbeef),0);
-         // a single position nft would have been minted to 0xbeef
-        uint256 tokenId  = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
+        alchemist.deposit(amount, address(0xbeef), 0);
+        // a single position nft would have been minted to 0xbeef
+        uint256 tokenId = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
         alchemist.mint(tokenId, amount / 2, address(0xbeef));
         vm.stopPrank();
 
@@ -1127,7 +1135,7 @@ contract AlchemistV3Test is Test {
         transmuterLogic.createRedemption(address(alchemist), address(fakeYieldToken), 50e18);
         vm.stopPrank();
 
-        vm.roll(block.number + (5256000/2));
+        vm.roll(block.number + (5_256_000 / 2));
 
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(alToken), address(alchemist), amount / 2);
@@ -1141,8 +1149,7 @@ contract AlchemistV3Test is Test {
 
         // Burn doesn't repay earmarked debt.
         assertEq(earmarked, (amount / 4));
-    }*/
-    //////
+    }
 
     function testLiquidate_Undercollateralized_Position() external {
         // NOTE testing with --fork-block-number 20592882, totalSupply will change if this is not maintained
@@ -1608,9 +1615,11 @@ contract AlchemistV3Test is Test {
         uint256 amount = 100e18;
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        alchemist.deposit(amount, address(0xbeef));
+        alchemist.deposit(amount, address(0xbeef), 0);
+        // a single position nft would have been minted to 0xbeef
+        uint256 tokenIdFor0xBeef = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
 
-        alchemist.mint((amount / 2), address(0xbeef));
+        alchemist.mint(tokenIdFor0xBeef, (amount / 2), address(0xbeef));
         vm.stopPrank();
 
         vm.startPrank(address(0xdad));
@@ -1620,7 +1629,7 @@ contract AlchemistV3Test is Test {
 
         vm.roll(block.number + 5_256_000);
 
-        (uint256 deposited, uint256 userDebt, uint256 earmarked) = alchemist.getCDP(address(0xbeef));
+        (uint256 deposited, uint256 userDebt, uint256 earmarked) = alchemist.getCDP(tokenIdFor0xBeef);
 
         assertApproxEqAbs(earmarked, amount / 2, 1);
 
@@ -1628,20 +1637,20 @@ contract AlchemistV3Test is Test {
         transmuterLogic.claimRedemption(1);
         vm.stopPrank();
 
-        (deposited, userDebt, earmarked) = alchemist.getCDP(address(0xbeef));
+        (deposited, userDebt, earmarked) = alchemist.getCDP(tokenIdFor0xBeef);
 
         assertApproxEqAbs(userDebt, 0, 1);
         assertApproxEqAbs(earmarked, 0, 1);
 
-        alchemist.poke(address(0xbeef));
+        alchemist.poke(tokenIdFor0xBeef);
 
-        (deposited, userDebt, earmarked) = alchemist.getCDP(address(0xbeef));
+        (deposited, userDebt, earmarked) = alchemist.getCDP(tokenIdFor0xBeef);
 
         assertApproxEqAbs(userDebt, 0, 1);
         assertApproxEqAbs(earmarked, 0, 1);
 
         uint256 yieldBalance = alchemist.getTotalDeposited();
-        uint256 borrowable = alchemist.getMaxBorrowable(address(0xbeef));
+        uint256 borrowable = alchemist.getMaxBorrowable(tokenIdFor0xBeef);
 
         assertApproxEqAbs(yieldBalance, 50e18, 1);
         assertApproxEqAbs(deposited, 50e18, 1);
@@ -1652,9 +1661,11 @@ contract AlchemistV3Test is Test {
         uint256 amount = 100e18;
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
-        alchemist.deposit(amount, address(0xbeef));
+        alchemist.deposit(amount, address(0xbeef), 0);
+        // a single position nft would have been minted to 0xbeef
+        uint256 tokenIdFor0xBeef = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
 
-        alchemist.mint((amount / 2), address(0xbeef));
+        alchemist.mint(tokenIdFor0xBeef, (amount / 2), address(0xbeef));
         vm.stopPrank();
 
         vm.startPrank(address(0xdad));
@@ -1664,28 +1675,28 @@ contract AlchemistV3Test is Test {
 
         vm.roll(block.number + (5_256_000 / 2));
 
-        (uint256 deposited, uint256 userDebt, uint256 earmarked) = alchemist.getCDP(address(0xbeef));
+        (uint256 deposited, uint256 userDebt, uint256 earmarked) = alchemist.getCDP(tokenIdFor0xBeef);
 
         assertApproxEqAbs(earmarked, amount / 4, 1);
         assertApproxEqAbs(userDebt, amount / 2, 1);
 
-        alchemist.poke(address(0xbeef));
+        alchemist.poke(tokenIdFor0xBeef);
 
         // Partial redemption halfway through transmutation period
         vm.startPrank(address(0xdad));
         transmuterLogic.claimRedemption(1);
         vm.stopPrank();
 
-        alchemist.poke(address(0xbeef));
+        alchemist.poke(tokenIdFor0xBeef);
 
-        (deposited, userDebt, earmarked) = alchemist.getCDP(address(0xbeef));
+        (deposited, userDebt, earmarked) = alchemist.getCDP(tokenIdFor0xBeef);
 
         // User should have half of their previous debt and none earmarked
         assertApproxEqAbs(userDebt, amount / 4, 1);
         assertApproxEqAbs(earmarked, 0, 1);
 
         uint256 yieldBalance = alchemist.getTotalDeposited();
-        uint256 borrowable = alchemist.getMaxBorrowable(address(0xbeef));
+        uint256 borrowable = alchemist.getMaxBorrowable(tokenIdFor0xBeef);
 
         assertApproxEqAbs(yieldBalance, 75e18, 1);
         assertApproxEqAbs(deposited, 75e18, 1);
