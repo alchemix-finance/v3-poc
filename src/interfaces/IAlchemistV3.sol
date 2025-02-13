@@ -11,6 +11,8 @@ struct InitializationParams {
     address underlyingToken;
     // The address(es) of the yield token(s) being deposited.
     address yieldToken;
+    // Chain specific number of blocks within 1 year.
+    uint256 blocksPerYear;
     // The minimum collateralization between 0 and 1 exclusive
     uint256 minimumCollateralization;
     // The global minimum collateralization, >= minimumCollateralization.
@@ -38,6 +40,8 @@ struct Account {
     uint256 earmarked;
     /// @notice Last weight of debt from most recent account sync.
     uint256 lastAccruedEarmarkWeight;
+    /// @notice Last weight of debt fee from most recent account sync.
+    uint256 lastAccruedFeeWeight;
     /// @notice Last weight of debt from most recent account sync.
     uint256 lastAccruedRedemptionWeight;
     /// @notice allowances for minting alAssets
@@ -395,10 +399,10 @@ interface IAlchemistV3Events {
 
     /// @notice Emitted when `owner` grants `spender` the ability to mint debt tokens on its behalf.
     ///
-    /// @param owner   The address of the account owner.
+    /// @param ownerTokenId   The id of the account authorized to grant approval
     /// @param spender The address which is being permitted to mint tokens on the behalf of `owner`.
     /// @param amount  The amount of debt tokens that `spender` is allowed to mint.
-    event ApproveMint(address indexed owner, address indexed spender, uint256 amount);
+    event ApproveMint(uint256 indexed ownerTokenId, address indexed spender, uint256 amount);
 
     /// @notice Emitted when a user deposits `amount of yieldToken to `recipient`.
     ///
@@ -436,7 +440,7 @@ interface IAlchemistV3Events {
     ///
     /// @param sender          The address which is repaying tokens.
     /// @param amount          The amount of the underlying token that was used to repay debt.
-    /// @param recipientId       The address that received credit for the repaid tokens.
+    /// @param recipientId     The id of account that received credit for the repaid tokens.
     /// @param credit          The amount of debt that was paid-off to the account owned by owner.
     event Repay(address indexed sender, uint256 amount, uint256 recipientId, uint256 credit);
 
@@ -502,6 +506,8 @@ interface IAlchemistV3State {
     function admin() external view returns (address admin);
 
     function gaurdians(address gaurdian) external view returns (bool isActive);
+
+    function blocksPerYear() external view returns (uint256 blocks);
 
     function cumulativeEarmarked() external view returns (uint256 earmarked);
 

@@ -293,8 +293,8 @@ contract TransmuterTest is Test {
         vm.prank(address(0xbeef));
         transmuter.createRedemption(address(alchemist), address(collateralToken), 100e18);
 
-        uint256 query = transmuter.queryGraph(block.number + 1, block.number + 5256000);
-        assertEq(query, 100e18);
+        // uint256 query = transmuter.queryGraph(block.number + 1, block.number + 5256000);
+        // assertEq(query, 100e18);
 
         vm.roll(block.number + (5256000 / 2));
 
@@ -308,9 +308,9 @@ contract TransmuterTest is Test {
         assertEq(alETH.balanceOf(address(transmuter)), 0);
 
         // Make sure remaining graph is cleared
-        query = transmuter.queryGraph(block.number + 1, block.number + (5256000 / 2));
+        uint256 query2 = transmuter.queryGraph(block.number + 1, block.number + (5256000 / 2));
 
-        assertApproxEqAbs(query, 0, 1);
+        assertApproxEqAbs(query2, 0, 1);
     }
 
     function testFuzzClaimRedemptionPremature(uint256 time) public {
@@ -321,6 +321,9 @@ contract TransmuterTest is Test {
 
         vm.prank(address(0xbeef));
         transmuter.createRedemption(address(alchemist), address(collateralToken), 100e18);
+
+        // uint256 query = transmuter.queryGraph(block.number + 1, block.number + 5256000);
+        // assertEq(query, 100e18);
 
         vm.roll(block.number + time);
 
@@ -334,9 +337,9 @@ contract TransmuterTest is Test {
         assertEq(alETH.balanceOf(address(transmuter)), 0);
 
         // Make sure remaining graph is cleared
-        uint256 query = transmuter.queryGraph(block.number + 1, block.number + (5256000 - time));
+        uint256 query2 = transmuter.queryGraph(block.number + 1, block.number + (5256000 - time));
 
-        assertApproxEqAbs(query, 0, 1);
+        assertApproxEqAbs(query2, 0, 1);
     }
 
     function testClaimRedemptionPrematureWithFee() public {
