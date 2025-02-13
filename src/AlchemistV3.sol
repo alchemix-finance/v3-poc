@@ -5,14 +5,12 @@ import "./interfaces/IAlchemistV3.sol";
 import "./interfaces/ITokenAdapter.sol";
 import "./interfaces/ITransmuter.sol";
 import "./interfaces/IAlchemistV3Position.sol";
-
 import "./libraries/TokenUtils.sol";
 import "./libraries/Limiters.sol";
 import "./libraries/SafeCast.sol";
 
 import {Initializable} from "../lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
-import {console} from "../../lib/forge-std/src/console.sol";
-
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Unauthorized, IllegalArgument, IllegalState, MissingInputData} from "./base/Errors.sol";
 
 // TODO: Add vault caps
@@ -305,6 +303,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
             tokenId = IAlchemistV3Position(alchemistPositionNFT).mint(recipient);
             emit AlchemistV3PositionNFTMinted(recipient, tokenId);
         }
+        _checkForValidAccountId(tokenId);
 
         _accounts[tokenId].collateralBalance += amount;
 
@@ -319,13 +318,10 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     /// @inheritdoc IAlchemistV3Actions
     function withdraw(uint256 amount, address recipient, uint256 tokenId) external returns (uint256) {
         _checkArgument(msg.sender != address(0));
+        _checkForValidAccountId(tokenId);
         _checkArgument(amount > 0);
-        _checkArgument(tokenId > 0);
         _checkArgument(alchemistPositionNFT != address(0));
-
-        // revert if sender is trying to update another owner's position
-        _checkArgument(IAlchemistV3Position(alchemistPositionNFT).ownerOf(tokenId) == msg.sender);
-
+        _checkAccountOwnership(IAlchemistV3Position(alchemistPositionNFT).ownerOf(tokenId), msg.sender);
         _earmark();
 
         _sync(tokenId);
@@ -348,13 +344,11 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     /// @inheritdoc IAlchemistV3Actions
     function mint(uint256 tokenId, uint256 amount, address recipient) external {
         _checkArgument(msg.sender != address(0));
+        _checkForValidAccountId(tokenId);
         _checkArgument(amount > 0);
         _checkState(loansPaused == false);
-        _checkArgument(tokenId > 0);
         _checkArgument(alchemistPositionNFT != address(0));
-
-        // revert if sender is trying to update another owner's position
-        _checkArgument(IAlchemistV3Position(alchemistPositionNFT).ownerOf(tokenId) == msg.sender);
+        _checkAccountOwnership(IAlchemistV3Position(alchemistPositionNFT).ownerOf(tokenId), msg.sender);
 
         // Query transmuter and earmark global debt
         _earmark();
@@ -369,9 +363,9 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     /// @inheritdoc IAlchemistV3Actions
     function mintFrom(uint256 tokenId, uint256 amount, address recipient) external {
         _checkArgument(amount > 0);
+        _checkForValidAccountId(tokenId);
         _checkArgument(recipient != address(0));
         _checkState(loansPaused == false);
-        _checkArgument(tokenId > 0);
 
         // Preemptively try and decrease the minting allowance. This will save gas when the allowance is not sufficient.
         _decreaseMintAllowance(tokenId, msg.sender, amount);
@@ -389,7 +383,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     /// @inheritdoc IAlchemistV3Actions
     function burn(uint256 amount, uint256 recipientId) external returns (uint256) {
         _checkArgument(amount > 0);
-        _checkArgument(recipientId > 0);
+        _checkForValidAccountId(recipientId);
         _checkArgument(alchemistPositionNFT != address(0));
 
         // Query transmuter and earmark global debt
@@ -418,8 +412,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     /// @inheritdoc IAlchemistV3Actions
     function repay(uint256 amount, uint256 recipientTokenId) external returns (uint256) {
         _checkArgument(amount > 0);
-        _checkArgument(recipientTokenId > 0);
-
+        _checkForValidAccountId(recipientTokenId);
         Account storage account = _accounts[recipientTokenId];
 
         // Query transmuter and earmark global debt
@@ -451,7 +444,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
     /// @inheritdoc IAlchemistV3Actions
     function liquidate(uint256 accountId) external override returns (uint256 underlyingAmount, uint256 fee) {
-        _checkArgument(accountId > 0);
+        _checkForValidAccountId(accountId);
         _earmark();
 
         (underlyingAmount, fee) = _liquidate(accountId);
@@ -474,7 +467,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
         for (uint256 i = 0; i < accountIds.length; i++) {
             uint256 accountId = accountIds[i];
-            if (accountId == 0) {
+            if (accountId == 0 || !_tokenExists(alchemistPositionNFT, accountId)) {
                 continue;
             }
             (uint256 underlyingAmount, uint256 fee) = _liquidate(accountId);
@@ -514,8 +507,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
     /// @inheritdoc IAlchemistV3Actions
     function approveMint(uint256 tokenId, address spender, uint256 amount) external {
-        // revert if sender is trying to update another owners position config
-        _checkArgument(IAlchemistV3Position(alchemistPositionNFT).ownerOf(tokenId) == msg.sender);
+        _checkAccountOwnership(IAlchemistV3Position(alchemistPositionNFT).ownerOf(tokenId), msg.sender);
         _approveMint(tokenId, spender, amount);
     }
 
@@ -670,6 +662,45 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     function _checkArgument(bool expression) internal pure {
         if (!expression) {
             revert IllegalArgument();
+        }
+    }
+
+    /// @dev Checks if owner == sender and reverts with an {UnauthorizedAccountAccessError} error if the result is {false}.
+    ///
+    /// @param owner The address of the owner of an account.
+    /// @param user The address of the user attempting to access an account.
+    function _checkAccountOwnership(address owner, address user) internal pure {
+        if (owner != user) {
+            revert UnauthorizedAccountAccessError();
+        }
+    }
+
+    /// @dev reverts {UnknownAccountOwnerIDError} error by if no owner exists.
+    ///
+    /// @param tokenId The id of an account.
+    function _checkForValidAccountId(uint256 tokenId) internal {
+        if (!_tokenExists(alchemistPositionNFT, tokenId)) {
+            revert UnknownAccountOwnerIDError();
+        }
+    }
+
+    /**
+     * @notice Checks whether a token id is linked to an owner. Non blocking / no reverts.
+     * @param nft The address of the ERC721 based contract.
+     * @param tokenId The token id to check.
+     * @return exists A boolean that is true if the token exists.
+     */
+    function _tokenExists(address nft, uint256 tokenId) internal view returns (bool exists) {
+        if (tokenId == 0) {
+            // token ids start from 1
+            return false;
+        }
+        try IERC721(nft).ownerOf(tokenId) returns (address _owner) {
+            // If the call succeeds and _owner is not the zero address, the token exists.
+            exists = (_owner != address(0));
+        } catch {
+            // If the call fails (reverts), then the token does not exist.
+            exists = false;
         }
     }
 

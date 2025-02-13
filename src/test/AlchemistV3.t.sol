@@ -2,6 +2,8 @@
 pragma solidity 0.8.26;
 
 import "../../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+
 import "../../lib/openzeppelin-contracts/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import "../libraries/SafeCast.sol";
 import "../../lib/forge-std/src/Test.sol";
@@ -551,6 +553,27 @@ contract AlchemistV3Test is Test {
         vm.stopPrank();
     }
 
+    function testWithdrawZeroIdRevert() external {
+        uint256 amount = 100e18;
+        vm.startPrank(address(0xbeef));
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
+        alchemist.deposit(amount, address(0xbeef), 0);
+        vm.expectRevert();
+        alchemist.withdraw(amount / 2, address(0xbeef), 0);
+        vm.stopPrank();
+    }
+
+    function testWithdrawInvalidIdRevert(uint256 tokenId) external {
+        vm.assume(tokenId > 1);
+        uint256 amount = 100e18;
+        vm.startPrank(address(0xbeef));
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
+        alchemist.deposit(amount, address(0xbeef), 0);
+        vm.expectRevert();
+        alchemist.withdraw(0, address(0xbeef), tokenId);
+        vm.stopPrank();
+    }
+
     function testWithdraw(uint256 amount) external {
         amount = bound(amount, 1e18, accountFunds);
         vm.startPrank(address(0xbeef));
@@ -619,7 +642,97 @@ contract AlchemistV3Test is Test {
         vm.stopPrank();
     }
 
-    function testMint_Variable_Amount(uint256 amount) external {
+    function testWithdrawUnauthorizedUserRevert() external {
+        uint256 amount = 100e18;
+        vm.startPrank(address(0xbeef));
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
+        alchemist.deposit(amount, address(0xbeef), 0);
+        // a single position nft would have been minted to address(0xbeef)
+        uint256 tokenId = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
+        vm.stopPrank();
+        vm.startPrank(externalUser);
+        vm.expectRevert();
+        alchemist.withdraw(amount / 2, externalUser, tokenId);
+        vm.stopPrank();
+    }
+
+    function testOwnershipTransferBeforeWithdraw(uint256 amount) external {
+        amount = bound(amount, 1e18, accountFunds);
+        vm.startPrank(address(0xbeef));
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
+        alchemist.deposit(amount, address(0xbeef), 0);
+        // a single position nft would have been minted to address(0xbeef)
+        uint256 tokenId = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
+
+        // tranferring ownership to externalUser
+        IERC721(address(alchemistNFT)).safeTransferFrom(address(0xbeef), externalUser, tokenId);
+        vm.stopPrank();
+
+        vm.startPrank(externalUser);
+
+        alchemist.withdraw(amount / 2, externalUser, tokenId);
+
+        vm.stopPrank();
+
+        (uint256 depositedCollateral,,) = alchemist.getCDP(tokenId);
+        vm.assertApproxEqAbs(depositedCollateral, amount / 2, minimumDepositOrWithdrawalLoss);
+        assertApproxEqAbs(alchemist.getTotalDeposited(), amount / 2, 1);
+        (uint256 deposited, uint256 userDebt,) = alchemist.getCDP(tokenId);
+        assertApproxEqAbs(deposited, amount / 2, 1);
+        assertApproxEqAbs(userDebt, 0, 1);
+
+        assertApproxEqAbs(
+            alchemist.getMaxBorrowable(tokenId),
+            alchemist.normalizeUnderlyingTokensToDebt(fakeYieldToken.price() * amount / 2 / 1e18) * 1e18 / alchemist.minimumCollateralization(),
+            1
+        );
+        assertApproxEqAbs(alchemist.getTotalUnderlyingValue(), alchemist.convertYieldTokensToUnderlying(amount / 2), 1);
+    }
+
+    function testOwnershipTransferBeforeWithdrawUnauthorizedRevert(uint256 amount) external {
+        amount = bound(amount, 1e18, accountFunds);
+        vm.startPrank(address(0xbeef));
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
+        alchemist.deposit(amount, address(0xbeef), 0);
+
+        // a single position nft would have been minted to address(0xbeef)
+        uint256 tokenId = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
+
+        // tranferring ownership to externalUser
+        IERC721(address(alchemistNFT)).safeTransferFrom(address(0xbeef), externalUser, tokenId);
+        vm.expectRevert();
+        // 0xbeef no longer has ownership of this account/tokenId
+        alchemist.withdraw(amount / 2, address(0xbeef), tokenId);
+        vm.stopPrank();
+    }
+
+    function testMintUnauthorizedUserRevert() external {
+        vm.startPrank(address(0xbeef));
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), 100e18);
+        alchemist.deposit(100e18, address(0xbeef), 0);
+        // a single position nft would have been minted to address(0xbeef)
+        uint256 tokenId = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
+        vm.stopPrank();
+        vm.startPrank(externalUser);
+        vm.expectRevert();
+        alchemist.mint(tokenId, 10e18, externalUser);
+        vm.stopPrank();
+    }
+
+    function testApproveMintUnauthorizedUserRevert() external {
+        vm.startPrank(address(0xbeef));
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), 100e18);
+        alchemist.deposit(100e18, address(0xbeef), 0);
+        // a single position nft would have been minted to address(0xbeef)
+        uint256 tokenId = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
+        vm.stopPrank();
+        vm.startPrank(externalUser);
+        vm.expectRevert();
+        alchemist.approveMint(tokenId, externalUser, 100e18);
+        vm.stopPrank();
+    }
+
+    function testOwnership_Transfer_Before_Mint_Variable_Amount(uint256 amount) external {
         amount = bound(amount, 1e18, accountFunds);
         uint256 ltv = 2e17;
         vm.startPrank(address(0xbeef));
@@ -629,6 +742,71 @@ contract AlchemistV3Test is Test {
         // a single position nft would have been minted to address(0xbeef)
         uint256 tokenId = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
 
+        // tranferring ownership to externalUser
+        IERC721(address(alchemistNFT)).safeTransferFrom(address(0xbeef), externalUser, tokenId);
+        vm.stopPrank();
+
+        vm.startPrank(externalUser);
+
+        alchemist.mint(tokenId, (amount * ltv) / FIXED_POINT_SCALAR, externalUser);
+        vm.assertApproxEqAbs(IERC20(alToken).balanceOf(externalUser), (amount * ltv) / FIXED_POINT_SCALAR, minimumDepositOrWithdrawalLoss);
+        vm.stopPrank();
+
+        (uint256 deposited, uint256 userDebt,) = alchemist.getCDP(tokenId);
+
+        assertApproxEqAbs(deposited, amount, 1);
+        assertApproxEqAbs(userDebt, amount * ltv / FIXED_POINT_SCALAR, 1);
+
+        assertApproxEqAbs(
+            alchemist.getMaxBorrowable(tokenId),
+            (alchemist.normalizeUnderlyingTokensToDebt(fakeYieldToken.price() * amount / 1e18) * 1e18 / alchemist.minimumCollateralization())
+                - (amount * ltv) / FIXED_POINT_SCALAR,
+            1
+        );
+
+        assertApproxEqAbs(alchemist.getTotalUnderlyingValue(), alchemist.convertYieldTokensToUnderlying(amount), 1);
+    }
+
+    function testOwnership_Transfer_Before_Mint_UnauthorizedRevert(uint256 amount) external {
+        amount = bound(amount, 1e18, accountFunds);
+        uint256 ltv = 2e17;
+        vm.startPrank(address(0xbeef));
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
+        alchemist.deposit(amount, address(0xbeef), 0);
+
+        // a single position nft would have been minted to address(0xbeef)
+        uint256 tokenId = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
+
+        // tranferring ownership to externalUser
+        IERC721(address(alchemistNFT)).safeTransferFrom(address(0xbeef), externalUser, tokenId);
+
+        vm.expectRevert();
+        alchemist.mint(tokenId, (amount * ltv) / FIXED_POINT_SCALAR, externalUser);
+        vm.stopPrank();
+    }
+
+    function testOwnership_Transfer_Before_ApproveMint_UnauthorizedRevert() external {
+        vm.startPrank(address(0xbeef));
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), 100e18);
+        alchemist.deposit(100e18, address(0xbeef), 0);
+        // a single position nft would have been minted to address(0xbeef)
+        uint256 tokenId = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
+        // tranferring ownership to externalUser
+        IERC721(address(alchemistNFT)).safeTransferFrom(address(0xbeef), externalUser, tokenId);
+        vm.expectRevert();
+        alchemist.approveMint(tokenId, yetAnotherExternalUser, 100e18);
+        vm.stopPrank();
+    }
+
+    function testMint_Variable_Amount(uint256 amount) external {
+        amount = bound(amount, 1e18, accountFunds);
+        uint256 ltv = 2e17;
+        vm.startPrank(address(0xbeef));
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
+        alchemist.deposit(amount, address(0xbeef), 0);
+
+        // a single position nft would have been minted to address(0xbeef)
+        uint256 tokenId = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
         alchemist.mint(tokenId, (amount * ltv) / FIXED_POINT_SCALAR, address(0xbeef));
         vm.assertApproxEqAbs(IERC20(alToken).balanceOf(address(0xbeef)), (amount * ltv) / FIXED_POINT_SCALAR, minimumDepositOrWithdrawalLoss);
         vm.stopPrank();
@@ -728,13 +906,55 @@ contract AlchemistV3Test is Test {
         vm.stopPrank();
     }
 
-    function testMintZeroTokenIdRevert() external {
+    function testMintZeroIdRevert() external {
         vm.startPrank(address(0xbeef));
         SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), 100e18);
         alchemist.deposit(100e18, address(0xbeef), 0);
-
-        vm.expectRevert(IllegalArgument.selector);
+        vm.expectRevert();
         alchemist.mint(0, 10e18, address(0xbeef));
+        vm.stopPrank();
+    }
+
+    function testMintInvalidIdRevert(uint256 tokenId) external {
+        vm.assume(tokenId > 1);
+        vm.startPrank(address(0xbeef));
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), 100e18);
+        alchemist.deposit(100e18, address(0xbeef), 0);
+        vm.expectRevert();
+        alchemist.mint(tokenId, 10e18, address(0xbeef));
+        vm.stopPrank();
+    }
+
+    function testDepositInvalidIdRevert(uint256 tokenId) external {
+        vm.assume(tokenId > 1);
+        vm.startPrank(address(0xbeef));
+        vm.expectRevert();
+        alchemist.deposit(100, address(0xbeef), tokenId);
+        vm.stopPrank();
+    }
+
+    function testMintFrom_InvalidIdRevert(uint256 amount, uint256 tokenId) external {
+        vm.assume(tokenId > 1);
+        amount = bound(amount, 1e18, accountFunds);
+        uint256 ltv = 2e17;
+
+        vm.startPrank(externalUser);
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
+        /// Make deposit for external user
+        alchemist.deposit(amount, externalUser, 0);
+
+        // a single position nft would have been minted to externalUser
+        uint256 realTokenId = TokenTestHelpher.getFirstTokenId(externalUser, address(alchemistNFT));
+
+        /// 0xbeef has been approved up to a mint amount for minting from `externalUser` account.
+        alchemist.approveMint(realTokenId, address(0xbeef), amount + 100e18);
+        vm.stopPrank();
+
+        assertEq(alchemist.mintAllowance(realTokenId, address(0xbeef)), amount + 100e18);
+
+        vm.startPrank(address(0xbeef));
+        vm.expectRevert();
+        alchemist.mintFrom(tokenId, ((amount * ltv) / FIXED_POINT_SCALAR), externalUser);
         vm.stopPrank();
     }
 
@@ -1017,6 +1237,23 @@ contract AlchemistV3Test is Test {
         vm.stopPrank();
     }
 
+    function testRepayInvalidIdRevert(uint256 tokenId) external {
+        vm.assume(tokenId > 1);
+
+        uint256 amount = 100e18;
+
+        vm.startPrank(address(0xbeef));
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
+        alchemist.deposit(amount, address(0xbeef), 0);
+        // a single position nft would have been minted to 0xbeef
+        uint256 realTokenId = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
+        alchemist.mint(realTokenId, amount / 2, address(0xbeef));
+
+        vm.expectRevert();
+        alchemist.repay(100e18, tokenId);
+        vm.stopPrank();
+    }
+
     function testBurn() external {
         uint256 amount = 100e18;
 
@@ -1149,6 +1386,28 @@ contract AlchemistV3Test is Test {
 
         // Burn doesn't repay earmarked debt.
         assertEq(earmarked, (amount / 4));
+    }
+
+    function testLiquidate_Revert_If_Invalid_Token_Id(uint256 amount, uint256 tokenId) external {
+        vm.assume(tokenId > 1);
+        amount = bound(amount, 1e18, accountFunds);
+        vm.startPrank(someWhale);
+        fakeYieldToken.mint(whaleSupply, someWhale);
+        vm.stopPrank();
+
+        vm.startPrank(address(0xbeef));
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
+        alchemist.deposit(amount, address(0xbeef), 0);
+        // a single position nft would have been minted to 0xbeef
+        uint256 realTokenId = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
+        alchemist.mint(realTokenId, alchemist.totalValue(realTokenId) * FIXED_POINT_SCALAR / minimumCollateralization, address(0xbeef));
+        vm.stopPrank();
+
+        // let another user liquidate the previous user position
+        vm.startPrank(externalUser);
+        vm.expectRevert();
+        (uint256 assets, uint256 fees) = alchemist.liquidate(tokenId);
+        vm.stopPrank();
     }
 
     function testLiquidate_Undercollateralized_Position() external {
@@ -1611,6 +1870,93 @@ contract AlchemistV3Test is Test {
         vm.assertApproxEqAbs(liquidatorPostTokenBalance, liquidatorPrevTokenBalance + fee, 1e18);
     }
 
+    function testBatch_Liquidate_Undercollateralized_Position_And_Skip_Zero_Ids() external {
+        // NOTE testing with --fork-block-number 20592882, totalSupply will change if this is not maintained
+        uint256 amount = 200_000e18; // 200,000 yvdai
+
+        vm.startPrank(someWhale);
+        fakeYieldToken.mint(whaleSupply, someWhale);
+        vm.stopPrank();
+
+        vm.startPrank(address(0xbeef));
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
+        alchemist.deposit(amount, address(0xbeef), 0);
+        // a single position nft would have been minted to 0xbeef
+        uint256 tokenIdFor0xBeef = TokenTestHelpher.getFirstTokenId(address(0xbeef), address(alchemistNFT));
+        alchemist.mint(tokenIdFor0xBeef, (alchemist.totalValue(tokenIdFor0xBeef) * FIXED_POINT_SCALAR) / minimumCollateralization, address(0xbeef));
+        vm.stopPrank();
+
+        vm.startPrank(anotherExternalUser);
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount + 100e18);
+        alchemist.deposit(amount, anotherExternalUser, 0);
+        // a single position nft would have been minted to 0xbeef
+        uint256 tokenIdForExternalUser = TokenTestHelpher.getFirstTokenId(anotherExternalUser, address(alchemistNFT));
+        alchemist.mint(
+            tokenIdForExternalUser, (alchemist.totalValue(tokenIdForExternalUser) * FIXED_POINT_SCALAR) / minimumCollateralization, anotherExternalUser
+        );
+        vm.stopPrank();
+
+        // just ensureing global alchemist collateralization stays above the minimum required for regular liquidations
+        // no need to mint anything
+        vm.startPrank(yetAnotherExternalUser);
+        SafeERC20.safeApprove(address(fakeYieldToken), address(alchemist), amount * 2);
+        alchemist.deposit(amount, yetAnotherExternalUser, 0);
+        vm.stopPrank();
+
+        // modify yield token price via modifying underlying token supply
+        uint256 initialVaultSupply = IERC20(address(fakeYieldToken)).totalSupply();
+        fakeYieldToken.updateMockTokenSupply(initialVaultSupply);
+        // increasing yeild token suppy by 59 bps or 5.9%  while keeping the unederlying supply unchanged
+        uint256 modifiedVaultSupply = (initialVaultSupply * 590 / 10_000) + initialVaultSupply;
+        fakeYieldToken.updateMockTokenSupply(modifiedVaultSupply);
+
+        // let another user liquidate the previous user position
+        vm.startPrank(externalUser);
+        uint256 liquidatorPrevTokenBalance = IERC20(fakeYieldToken).balanceOf(externalUser);
+
+        // Batch Liquidation for 2 user addresses
+        uint256[] memory accountsToLiquidate = new uint256[](3);
+        accountsToLiquidate[0] = tokenIdFor0xBeef;
+        accountsToLiquidate[1] = 0; // invalid zero ids
+        accountsToLiquidate[2] = tokenIdForExternalUser;
+
+        (uint256 assets, uint256 fee) = alchemist.batchLiquidate(accountsToLiquidate);
+
+        uint256 liquidatorPostTokenBalance = IERC20(fakeYieldToken).balanceOf(externalUser);
+        (uint256 depositedCollateral, uint256 debt,) = alchemist.getCDP(tokenIdFor0xBeef);
+
+        vm.stopPrank();
+
+        /// Tests for first liquidated User ///
+
+        // ensure debt is reduced by the result of (collateral - y)/(debt - y) = minimum collateral ratio
+        vm.assertApproxEqAbs(debt, 79_716_713_881_019_828_317_726, minimumDepositOrWithdrawalLoss);
+
+        // ensure depositedCollateral is reduced by the result of (collateral - y)/(debt - y) = minimum collateral ratio
+        vm.assertApproxEqAbs(depositedCollateral, 90_613_999_999_999_998_009_700, minimumDepositOrWithdrawalLoss);
+
+        /// Tests for second liquidated User ///
+
+        (depositedCollateral, debt,) = alchemist.getCDP(tokenIdForExternalUser);
+
+        // ensure debt is reduced by the result of (collateral - y)/(debt - y) = minimum collateral ratio
+        vm.assertApproxEqAbs(debt, 79_716_713_881_019_828_317_726, minimumDepositOrWithdrawalLoss);
+
+        // ensure depositedCollateral is reduced by the result of (collateral - y)/(debt - y) = minimum collateral ratio
+        vm.assertApproxEqAbs(depositedCollateral, 90_613_999_999_999_998_009_700, minimumDepositOrWithdrawalLoss);
+
+        // Tests for Liquidator ///
+
+        // ensure assets liquidated is equal ~ 2 * result of (collateral - y)/(debt - y) = minimum collateral ratio for the users with similar positions
+        vm.assertApproxEqAbs(assets, 206_583_569_405_099_153_702_564, minimumDepositOrWithdrawalLoss);
+
+        // ensure liquidator fee is correct (3% of liquidation amount)
+        vm.assertApproxEqAbs(fee, 6_372_000_000_000_000_115_938, 1e18);
+
+        // liquidator gets correct amount of fee
+        vm.assertApproxEqAbs(liquidatorPostTokenBalance, liquidatorPrevTokenBalance + fee, 1e18);
+    }
+
     function testEarmarkDebtAndRedeem() external {
         uint256 amount = 100e18;
         vm.startPrank(address(0xbeef));
@@ -1706,6 +2052,13 @@ contract AlchemistV3Test is Test {
     function testRedemptionNotTransmuter() external {
         vm.expectRevert();
         alchemist.redeem(20e18);
+    }
+
+    function testUnauthorizedAlchmistV3PositionNFTMint() external {
+        vm.startPrank(address(0xbeef));
+        vm.expectRevert();
+        IAlchemistV3Position(address(alchemistNFT)).mint(address(0xbeef));
+        vm.stopPrank();
     }
 
     function testContractSize() external {

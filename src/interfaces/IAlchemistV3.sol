@@ -654,11 +654,17 @@ interface IAlchemistV3Errors {
     /// @notice An error which is used to indicate that a liquidate operation failed because an account is sufficiaenly collateralized.
     error LiquidationError();
 
+    /// @notice An error which is used to indicate that a user is performing an action on an account that requires account ownership
+    error UnauthorizedAccountAccessError();
+
     /// @notice An error which is used to indicate that a minting operation failed because the minting limit has been exceeded.
     ///
     /// @param amount    The amount of debt tokens that were requested to be minted.
     /// @param available The amount of debt tokens which are available to mint.
     error MintingLimitExceeded(uint256 amount, uint256 available);
+
+    /// @notice An error which is used to indicate that the account id used is not linked to any owner
+    error UnknownAccountOwnerIDError();
 }
 
 /// @title  IAlchemistV3
