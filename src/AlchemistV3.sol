@@ -363,7 +363,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         // Transfer the yield tokens to msg.sender
         TokenUtils.safeTransfer(yieldToken, recipient, amount);
 
-        emit Withdraw(amount, recipient);
+        emit Withdraw(amount, tokenId, recipient);
 
         return amount;
     }

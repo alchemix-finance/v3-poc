@@ -452,7 +452,7 @@ interface IAlchemistV3Events {
     ///
     /// @param amount       The amount of yield tokens that were deposited.
     /// @param recipientId    The id of the account that received the deposited funds.
-    event Deposit(uint256 amount, uint256 recipientId);
+    event Deposit(uint256 amount, uint256 indexed recipientId);
 
     /// @notice Emitted when yieldToken is withdrawn from the account owned.
     ///         by `owner` to `recipient`.
@@ -461,8 +461,9 @@ interface IAlchemistV3Events {
     ///         were unwrapped.
     ///
     /// @param amount     Amount of tokens withdrawn.
+    /// @param tokenId    The id of the account that the funds are withdrawn from.
     /// @param recipient  The address that received the withdrawn funds.
-    event Withdraw(uint256 amount, address recipient);
+    event Withdraw(uint256 amount, uint256 indexed tokenId, address recipient);
 
     /// @notice Emitted when `amount` debt tokens are minted to `recipient` using the account owned by `owner`.
     ///
@@ -555,7 +556,7 @@ interface IAlchemistV3State {
     function cumulativeEarmarked() external view returns (uint256 earmarked);
 
     function lastEarmarkBlock() external view returns (uint256 block);
-    
+
     function lastRedemptionBlock() external view returns (uint256 block);
 
     function totalDebt() external view returns (uint256 debt);
