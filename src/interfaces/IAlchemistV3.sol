@@ -470,7 +470,7 @@ interface IAlchemistV3Events {
     /// @param tokenId     The tokenId of the account owner.
     /// @param amount    The amount of tokens that were minted.
     /// @param recipient The recipient of the minted tokens.
-    event Mint(uint256 tokenId, uint256 amount, address recipient);
+    event Mint(uint256 indexed tokenId, uint256 amount, address recipient);
 
     /// @notice Emitted when `sender` burns `amount` debt tokens to grant credit to  account owner `recipientId`.
     ///
