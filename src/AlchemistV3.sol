@@ -502,12 +502,13 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
                 continue;
             }
             (uint256 underlyingAmount, uint256 fee) = _liquidate(accountId);
+            emit Liquidated(accountId, msg.sender, underlyingAmount, fee);
             totalAmountLiquidated += underlyingAmount;
             totalFees += fee;
         }
 
         if (totalAmountLiquidated > 0) {
-            emit BatchLiquidated(accountIds, msg.sender, totalAmountLiquidated, totalFees);
+            emit BatchLiquidated(msg.sender, totalAmountLiquidated, totalFees);
             return (totalAmountLiquidated, totalFees);
         } else {
             // no total liquidation amount returned, so no liquidations happened

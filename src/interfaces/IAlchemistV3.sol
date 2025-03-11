@@ -520,13 +520,12 @@ interface IAlchemistV3Events {
     /// @param fee          The liquidation fee sent to 'liquidator'
     event Liquidated(uint256 indexed accountId, address liquidator, uint256 amount, uint256 fee);
 
-    /// @notice Emitted when account for 'owner' has been liquidated.
+    /// @notice Emitted when multiple accounts have been liquidate by `liquidator`.
     ///
-    /// @param accounts       The address of the accounts liquidated
     /// @param liquidator   The address of the liquidator
     /// @param amount       The amount liquidated
     /// @param fee          The liquidation fee sent to 'liquidator'
-    event BatchLiquidated(uint256[] indexed accounts, address liquidator, uint256 amount, uint256 fee);
+    event BatchLiquidated(address indexed liquidator, uint256 amount, uint256 fee);
 }
 
 interface IAlchemistV3Immutables {
