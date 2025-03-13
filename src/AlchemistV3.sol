@@ -506,9 +506,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
             totalAmountLiquidated += underlyingAmount;
             totalFees += fee;
         }
-
         if (totalAmountLiquidated > 0) {
-            emit BatchLiquidated(msg.sender, totalAmountLiquidated, totalFees);
             return (totalAmountLiquidated, totalFees);
         } else {
             // no total liquidation amount returned, so no liquidations happened

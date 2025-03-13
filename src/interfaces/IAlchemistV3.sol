@@ -476,7 +476,7 @@ interface IAlchemistV3Events {
     ///
     /// @param amount    The amount of tokens that were burned.
     /// @param recipientId The token id of account owned by recipientId that received credit for the burned tokens.
-    event Burn(address indexed sender, uint256 amount, uint256 recipientId);
+    event Burn(address indexed sender, uint256 amount, uint256 indexed recipientId);
 
     /// @notice Emitted when `amount` of `underlyingToken` are repaid to grant credit to account owned by `recipientId`.
     ///
@@ -484,13 +484,7 @@ interface IAlchemistV3Events {
     /// @param amount          The amount of the underlying token that was used to repay debt.
     /// @param recipientId     The id of account that received credit for the repaid tokens.
     /// @param credit          The amount of debt that was paid-off to the account owned by owner.
-    event Repay(address indexed sender, uint256 amount, uint256 recipientId, uint256 credit);
-
-    /// @notice Emitted when `sender` liquidates `share` shares of `yieldToken`.
-    ///
-    /// @param owner           The address of the account owner liquidating shares.
-    /// @param credit          The amount of debt that was paid-off to the account owned by owner.
-    event Liquidate(address indexed owner, uint256 credit);
+    event Repay(address indexed sender, uint256 amount, uint256 indexed recipientId, uint256 credit);
 
     /// @notice Emitted when the transmuter triggers a redemption.
     ///
@@ -519,13 +513,6 @@ interface IAlchemistV3Events {
     /// @param amount       The amount liquidated
     /// @param fee          The liquidation fee sent to 'liquidator'
     event Liquidated(uint256 indexed accountId, address liquidator, uint256 amount, uint256 fee);
-
-    /// @notice Emitted when multiple accounts have been liquidate by `liquidator`.
-    ///
-    /// @param liquidator   The address of the liquidator
-    /// @param amount       The amount liquidated
-    /// @param fee          The liquidation fee sent to 'liquidator'
-    event BatchLiquidated(address indexed liquidator, uint256 amount, uint256 fee);
 }
 
 interface IAlchemistV3Immutables {
