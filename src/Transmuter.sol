@@ -234,7 +234,6 @@ contract Transmuter is ITransmuter, ERC721 {
         if (blocksLeft > 0) _updateStakingGraph(-position.amount.toInt256() * BLOCK_SCALING_FACTOR / transmutationTime.toInt256(), blocksLeft);
 
         TokenUtils.safeTransfer(alchemist.yieldToken(), msg.sender, alchemist.convertDebtTokensToYield(claimAmount));
-
         TokenUtils.safeTransfer(alchemist.yieldToken(), protocolFeeReceiver, alchemist.convertDebtTokensToYield(feeAmount));
 
         TokenUtils.safeTransfer(syntheticToken, msg.sender, syntheticReturned);

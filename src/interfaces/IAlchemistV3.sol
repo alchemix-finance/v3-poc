@@ -50,6 +50,11 @@ struct Account {
     uint256 lastAccruedFeeWeight;
     /// @notice Last weight of debt from most recent account sync.
     uint256 lastAccruedRedemptionWeight;
+
+    uint256 scaledDebt;
+    uint256 principle;
+    uint256 setAsideRaw;
+
     /// @notice allowances for minting alAssets, per version.
     mapping(uint256 => mapping(address => uint256)) mintAllowances;
     /// @notice id used in the mintAllowances map which is incremented on reset.
