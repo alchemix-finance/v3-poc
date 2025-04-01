@@ -75,7 +75,7 @@ contract InvariantBaseTest is InvariantsTest {
         vm.startPrank(onBehalf);
         alToken.mint(onBehalf, amount);
         alToken.approve(address(transmuterLogic), amount);
-        transmuterLogic.createRedemption(address(alchemist), address(fakeYieldToken), amount);
+        transmuterLogic.createRedemption(amount);
         vm.stopPrank();
     }
 
@@ -96,10 +96,10 @@ contract InvariantBaseTest is InvariantsTest {
         if (amount == 0) return;
 
         uint256 tokenId;
-        
+
         try AlchemistNFTHelper.getFirstTokenId(onBehalf, address(alchemistNFT)) {
             tokenId = AlchemistNFTHelper.getFirstTokenId(onBehalf, address(alchemistNFT));
-        } catch  {
+        } catch {
             tokenId = 0;
         }
 
@@ -114,8 +114,8 @@ contract InvariantBaseTest is InvariantsTest {
 
         (uint256 collat, uint256 debt,) = alchemist.getCDP(tokenId);
         uint256 debtToCollateral = alchemist.convertDebtTokensToYield(debt);
-        uint256 maxWithdraw = (collat * 1e18 / alchemist.minimumCollateralization()) > debtToCollateral
-            ? (collat * 1e18 / alchemist.minimumCollateralization()) - debtToCollateral
+        uint256 maxWithdraw = (collat * FIXED_POINT_SCALAR / alchemist.minimumCollateralization()) > debtToCollateral
+            ? (collat * FIXED_POINT_SCALAR / alchemist.minimumCollateralization()) - debtToCollateral
             : 0;
 
         amount = bound(amount, 0, maxWithdraw);
@@ -165,9 +165,9 @@ contract InvariantBaseTest is InvariantsTest {
         if (onBehalf == address(0)) return;
 
         // TODO: Fix after burn discussion
-        uint256 totalLocked = transmuterLogic.totalLocked() > fakeYieldToken.balanceOf(address(transmuterLogic))
-            ? transmuterLogic.totalLocked() - fakeYieldToken.balanceOf(address(transmuterLogic))
-            : 0;
+        // uint256 totalLocked = transmuterLogic.totalLocked() > fakeYieldToken.balanceOf(address(transmuterLogic))
+        //     ? transmuterLogic.totalLocked() - fakeYieldToken.balanceOf(address(transmuterLogic))
+        //    : 0;
 
         amount = bound(amount, 0, alchemist.totalDebt());
         if (amount == 0) return;

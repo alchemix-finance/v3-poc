@@ -14,3 +14,5 @@ error PositionNotFound();
 error PrematureClaim();
 
 error DepositTooLarge();
+
+error CallerNotOwner();

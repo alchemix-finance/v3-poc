@@ -49,12 +49,6 @@ contract TestYieldToken is ITestYieldToken, ERC20 {
         return shares;
     }
 
-    function giveTokens(uint256 amount, address recipient) external {
-        assert(amount > 0);
-
-        uint256 shares = _issueSharesForAmount(recipient, amount);
-    }
-
     function redeem(uint256 shares, address recipient) external override returns (uint256) {
         assert(shares > 0);
 

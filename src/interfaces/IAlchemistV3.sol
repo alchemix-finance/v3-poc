@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 /// @notice Contract initialization parameters.
-struct InitializationParams {
+struct AlchemistInitializationParams {
     // The initial admin account.
     address admin;
     // The ERC20 token used to represent debt. i.e. the alAsset.
@@ -23,9 +23,11 @@ struct InitializationParams {
     uint256 collateralizationLowerBound;
     // Token adapter used to get price for yiel tokens.
     address tokenAdapter;
+    // Token adapter used to get price for eth.
+    address ethUsdAdapter;
     // The initial transmuter or transmuter buffer.
     address transmuter;
-    // TODO Need to discuss how fees will be accumulated since harvests will no longer be done.
+    // The fee on user debt paid to the protocol.
     uint256 protocolFee;
     // The address that receives protocol fees.
     address protocolFeeReceiver;
@@ -48,8 +50,10 @@ struct Account {
     uint256 lastAccruedFeeWeight;
     /// @notice Last weight of debt from most recent account sync.
     uint256 lastAccruedRedemptionWeight;
-    /// @notice allowances for minting alAssets
-    mapping(address => uint256) mintAllowances;
+    /// @notice allowances for minting alAssets, per version.
+    mapping(uint256 => mapping(address => uint256)) mintAllowances;
+    /// @notice id used in the mintAllowances map which is incremented on reset.
+    uint256 allowancesVersion;
 }
 
 /// @notice Information associated with a redemption.
@@ -76,6 +80,8 @@ interface IAlchemistV3Actions {
     function poke(uint256 tokenId) external;
 
     /// @notice Deposit a yield token into a user's account.
+    /// @notice Create a new position by using zero (0) for the `recipientId`.
+    /// @notice Users may create as many positions as they want.
     ///
     /// @notice An approval must be set for `yieldToken` which is greater than `amount`.
     ///
@@ -96,7 +102,7 @@ interface IAlchemistV3Actions {
     ///
     /// @param amount     The amount of yield tokens to deposit.
     /// @param recipient  The owner of the account that will receive the resulting shares.
-    /// @param recipientId The id of account
+    /// @param recipientId The id of account.
     /// @return debtValue The value of deposited tokens normalized to debt token value.
     function deposit(uint256 amount, address recipient, uint256 recipientId) external returns (uint256 debtValue);
 
@@ -205,22 +211,25 @@ interface IAlchemistV3Actions {
     /// @return amountRepaid The amount of tokens that were repaid.
     function repay(uint256 amount, uint256 recipientTokenId) external returns (uint256 amountRepaid);
 
-    /// @notice Liquidates `owner` if the debt for account `owner` is greater than the underlying value of their collateral * LTV.
-    ///
-    /// @notice `owner` must be non-zero or this call will revert with an {IllegalArgument} error.
-    ///
-    /// @notice Emits a {Liquidate} event.
-    ///
-    /// @notice **Example:**
-    /// @notice ```
-    /// @notice AlchemistV2(alchemistAddress).liquidate(id4);
-    /// @notice ```
-    ///
-    /// @param accountId   The tokenId of account
-    ///
-    /// @return underlyingAmount    Underlying tokens sent to the transmuter.
-    /// @return fee                 Underlying tokens sent to the liquidator.
-    function liquidate(uint256 accountId) external returns (uint256 underlyingAmount, uint256 fee);
+    /**
+     * @notice Liquidates `owner` if the debt for account `owner` is greater than the underlying value of their collateral * LTV.
+     *
+     * @notice `owner` must be non-zero or this call will revert with an {IllegalArgument} error.
+     *
+     * @notice Emits a {Liquidate} event.
+     *
+     * @notice **Example:**
+     * @notice ```
+     * @notice AlchemistV2(alchemistAddress).liquidate(id4);
+     * @notice ```
+     *
+     * @param accountId   The tokenId of account
+     *
+     * @return underlyingAmount    Underlying tokens sent to the transmuter.
+     * @return feeInYield          Fee paid to liquidator in yield tokens.
+     * @return feeInETH            Fee paid to liquidator in ETH (if needed i.e. if there isn't enough remaining collateral to cover the fee).
+     */
+    function liquidate(uint256 accountId) external returns (uint256 underlyingAmount, uint256 feeInYield, uint256 feeInETH);
 
     /// @notice Liquidates `owners` if the debt for account `owner` is greater than the underlying value of their collateral * LTV.
     ///
@@ -235,8 +244,9 @@ interface IAlchemistV3Actions {
     /// @param accountIds   The tokenId of each account
     ///
     /// @return totalAmountLiquidated    Equivalent amount of underlying tokens in yield tokens sent to the transmuter.
-    /// @return totalFees                Amount sent to liquidator in yield tokens.
-    function batchLiquidate(uint256[] memory accountIds) external returns (uint256 totalAmountLiquidated, uint256 totalFees);
+    /// @return totalFeesInYield        Amount sent to liquidator in yield tokens.
+    /// @return totalFeesInETH          Amount sent to liquidator in ETH (if needed i.e. if there isn't enough remaining collateral to cover the fee).
+    function batchLiquidate(uint256[] memory accountIds) external returns (uint256 totalAmountLiquidated, uint256 totalFeesInYield, uint256 totalFeesInETH);
 
     /// @notice Redeems `amount` debt from the alchemist in exchange for yield tokens sent to the transmuter.
     ///
@@ -246,6 +256,22 @@ interface IAlchemistV3Actions {
     ///
     /// @param amount The amount of tokens to redeem.
     function redeem(uint256 amount) external;
+
+    /// @notice Subtracts `amount` synthetics from total minted from the alchemist.
+    ///
+    /// @notice This function is only callable by the transmuter.
+    ///
+    /// @param amount The amount of synthetic tokens to adjust.
+    function adjustTotalSyntheticsIssued(uint256 amount) external;
+
+    /// @notice Resets all mint allowances by account managed by `tokenId`.
+    ///
+    /// @notice This function is only callable by the owner of the token id or the AlchemistV3Position contract.
+    ///
+    /// @notice Emits a {MintAllowancesReset} event.
+    ///
+    /// @param tokenId The token id of the account.
+    function resetMintAllowances(uint256 tokenId) external;
 }
 
 interface IAlchemistV3AdminActions {
@@ -260,15 +286,15 @@ interface IAlchemistV3AdminActions {
     /// @param value The address to set the pending admin to.
     function setPendingAdmin(address value) external;
 
-    /// @notice Sets the active state of a gaurdian.
+    /// @notice Sets the active state of a guardian.
     ///
     /// @notice `msg.sender` must be the admin or this call will will revert with an {Unauthorized} error.
     ///
-    /// @notice Emits a {GaurdianSet} event.
+    /// @notice Emits a {GuardianSet} event.
     ///
-    /// @param gaurdian The address of the target gaurdian.
-    /// @param isActive The active state to set for the gaurdian.
-    function setGaurdian(address gaurdian, bool isActive) external;
+    /// @param guardian The address of the target guardian.
+    /// @param isActive The active state to set for the guardian.
+    function setGuardian(address guardian, bool isActive) external;
 
     /// @notice Allows for `msg.sender` to accepts the role of administrator.
     ///
@@ -298,6 +324,15 @@ interface IAlchemistV3AdminActions {
     ///
     /// @param value The address of token adapter.
     function setTokenAdapter(address value) external;
+
+    /// @notice Sets the token adapter for the eth.
+    ///
+    /// @notice `msg.sender` must be the admin or this call will will revert with an {Unauthorized} error.
+    ///
+    /// @notice Emits a {EthUsdAdapterUpdated} event.
+    ///
+    /// @param value The address of the new eth usd adapter.
+    function setEthUsdAdapter(address value) external;
 
     /// @notice Set the minimum collateralization ratio.
     ///
@@ -364,7 +399,7 @@ interface IAlchemistV3AdminActions {
 
     /// @notice Pause all future deposits in the Alchemist.
     ///
-    /// @notice `msg.sender` must be the admin or gaurdian or this call will revert with an {Unauthorized} error.
+    /// @notice `msg.sender` must be the admin or guardian or this call will revert with an {Unauthorized} error.
     ///
     /// @notice Emits a {DepositsPaused} event.
     ///
@@ -373,12 +408,21 @@ interface IAlchemistV3AdminActions {
 
     /// @notice Pause all future loans in the Alchemist.
     ///
-    /// @notice `msg.sender` must be the admin or gaurdian or this call will revert with an {Unauthorized} error.
+    /// @notice `msg.sender` must be the admin or guardian or this call will revert with an {Unauthorized} error.
     ///
     /// @notice Emits a {LoansPaused} event.
     ///
     /// @param isPaused The new pause state for loans in the alchemist.
     function pauseLoans(bool isPaused) external;
+
+    /// @notice Set the alchemist ETH vault.
+    ///
+    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    ///
+    /// @notice Emits a {AlchemistETHVaultUpdated} event.
+    ///
+    /// @param value The address of the new alchemist ETH vault.
+    function setAlchemistETHVault(address value) external;
 }
 
 interface IAlchemistV3Events {
@@ -386,6 +430,11 @@ interface IAlchemistV3Events {
     ///
     /// @param pendingAdmin The address of the pending admin.
     event PendingAdminUpdated(address pendingAdmin);
+
+    /// @notice Emitted when the alchemist ETH vault is updated.
+    ///
+    /// @param alchemistETHVault The address of the alchemist ETH vault.
+    event AlchemistETHVaultUpdated(address alchemistETHVault);
 
     /// @notice Emitted when the administrator is updated.
     ///
@@ -397,11 +446,11 @@ interface IAlchemistV3Events {
     /// @param value The value of the new deposit cap.
     event DepositCapUpdated(uint256 value);
 
-    /// @notice Emitted when a gaurdian is added or removed from the alchemist.
+    /// @notice Emitted when a guardian is added or removed from the alchemist.
     ///
-    /// @param gaurdian The addres of the new gaurdian.
-    /// @param state    The active state of the gaurdian.
-    event GaurdianSet(address gaurdian, bool state);
+    /// @param guardian The addres of the new guardian.
+    /// @param state    The active state of the guardian.
+    event GuardianSet(address guardian, bool state);
 
     /// @notice Emitted when a new token adapter is set in the alchemist.
     ///
@@ -412,6 +461,11 @@ interface IAlchemistV3Events {
     ///
     /// @param transmuter The updated address of the transmuter.
     event TransmuterUpdated(address transmuter);
+
+    /// @notice Emitted when the eth usd adapter is updated.
+    ///
+    /// @param ethUsdAdapter The updated address of the eth usd adapter.
+    event EthUsdAdapterUpdated(address ethUsdAdapter);
 
     /// @notice Emitted when the minimum collateralization is updated.
     ///
@@ -452,7 +506,7 @@ interface IAlchemistV3Events {
     ///
     /// @param amount       The amount of yield tokens that were deposited.
     /// @param recipientId    The id of the account that received the deposited funds.
-    event Deposit(uint256 amount, uint256 recipientId);
+    event Deposit(uint256 amount, uint256 indexed recipientId);
 
     /// @notice Emitted when yieldToken is withdrawn from the account owned.
     ///         by `owner` to `recipient`.
@@ -461,21 +515,22 @@ interface IAlchemistV3Events {
     ///         were unwrapped.
     ///
     /// @param amount     Amount of tokens withdrawn.
+    /// @param tokenId The id of the account that the funds are withdrawn from.
     /// @param recipient  The address that received the withdrawn funds.
-    event Withdraw(uint256 amount, address recipient);
+    event Withdraw(uint256 amount, uint256 indexed tokenId, address recipient);
 
     /// @notice Emitted when `amount` debt tokens are minted to `recipient` using the account owned by `owner`.
     ///
     /// @param tokenId     The tokenId of the account owner.
     /// @param amount    The amount of tokens that were minted.
     /// @param recipient The recipient of the minted tokens.
-    event Mint(uint256 tokenId, uint256 amount, address recipient);
+    event Mint(uint256 indexed tokenId, uint256 amount, address recipient);
 
     /// @notice Emitted when `sender` burns `amount` debt tokens to grant credit to  account owner `recipientId`.
     ///
     /// @param amount    The amount of tokens that were burned.
     /// @param recipientId The token id of account owned by recipientId that received credit for the burned tokens.
-    event Burn(address indexed sender, uint256 amount, uint256 recipientId);
+    event Burn(address indexed sender, uint256 amount, uint256 indexed recipientId);
 
     /// @notice Emitted when `amount` of `underlyingToken` are repaid to grant credit to account owned by `recipientId`.
     ///
@@ -483,13 +538,7 @@ interface IAlchemistV3Events {
     /// @param amount          The amount of the underlying token that was used to repay debt.
     /// @param recipientId     The id of account that received credit for the repaid tokens.
     /// @param credit          The amount of debt that was paid-off to the account owned by owner.
-    event Repay(address indexed sender, uint256 amount, uint256 recipientId, uint256 credit);
-
-    /// @notice Emitted when `sender` liquidates `share` shares of `yieldToken`.
-    ///
-    /// @param owner           The address of the account owner liquidating shares.
-    /// @param credit          The amount of debt that was paid-off to the account owned by owner.
-    event Liquidate(address indexed owner, uint256 credit);
+    event Repay(address indexed sender, uint256 amount, uint256 indexed recipientId, uint256 credit);
 
     /// @notice Emitted when the transmuter triggers a redemption.
     ///
@@ -516,16 +565,23 @@ interface IAlchemistV3Events {
     /// @param accountId        The token id of the account liquidated
     /// @param liquidator   The address of the liquidator
     /// @param amount       The amount liquidated
-    /// @param fee          The liquidation fee sent to 'liquidator'
-    event Liquidated(uint256 indexed accountId, address liquidator, uint256 amount, uint256 fee);
+    /// @param feeInYield          The liquidation fee sent to 'liquidator' in yield tokens.
+    /// @param feeInETH            The liquidation fee sent to 'liquidator' in ETH (if needed i.e. if there isn't enough remaining collateral to cover the fee).
+    event Liquidated(uint256 indexed accountId, address liquidator, uint256 amount, uint256 feeInYield, uint256 feeInETH);
 
     /// @notice Emitted when account for 'owner' has been liquidated.
     ///
     /// @param accounts       The address of the accounts liquidated
     /// @param liquidator   The address of the liquidator
     /// @param amount       The amount liquidated
-    /// @param fee          The liquidation fee sent to 'liquidator'
-    event BatchLiquidated(uint256[] indexed accounts, address liquidator, uint256 amount, uint256 fee);
+    /// @param feeInYield          The liquidation fee sent to 'liquidator' in yield tokens.
+    /// @param feeInETH            The liquidation fee sent to 'liquidator' in ETH (if needed i.e. if there isn't enough remaining collateral to cover the fee).
+    event BatchLiquidated(uint256[] indexed accounts, address liquidator, uint256 amount, uint256 feeInYield, uint256 feeInETH);
+
+    /// @notice Emitted when all mint allowances for account managed by `tokenId` are reset.
+    ///
+    /// @param tokenId       The tokenId of the account.
+    event MintAllowancesReset(uint256 indexed tokenId);
 }
 
 interface IAlchemistV3Immutables {
@@ -548,23 +604,23 @@ interface IAlchemistV3State {
 
     function depositCap() external view returns (uint256 cap);
 
-    function gaurdians(address gaurdian) external view returns (bool isActive);
+    function guardians(address guardian) external view returns (bool isActive);
 
     function blocksPerYear() external view returns (uint256 blocks);
 
     function cumulativeEarmarked() external view returns (uint256 earmarked);
 
     function lastEarmarkBlock() external view returns (uint256 block);
-    
+
     function lastRedemptionBlock() external view returns (uint256 block);
 
     function totalDebt() external view returns (uint256 debt);
 
+    function totalSyntheticsIssued() external view returns (uint256 syntheticAmount);
+
     function protocolFee() external view returns (uint256 fee);
 
     function liquidatorFee() external view returns (uint256 fee);
-
-    function underlyingDecimals() external view returns (uint8 decimals);
 
     function underlyingConversionFactor() external view returns (uint256 factor);
 
@@ -580,6 +636,8 @@ interface IAlchemistV3State {
 
     function alchemistPositionNFT() external view returns (address nftContract);
 
+    function alchemistETHVault() external view returns (address vault);
+
     /// @notice Gets the address of the pending administrator.
     ///
     /// @return pendingAdmin The pending administrator address.
@@ -589,6 +647,9 @@ interface IAlchemistV3State {
     ///
     /// @return adapter The token adapter address.
     function tokenAdapter() external returns (address adapter);
+
+    /// @notice Gets the address of the current eth usd adapter.
+    function ethUsdAdapter() external view returns (address adapter);
 
     /// @notice Gets the address of the transmuter.
     ///
@@ -708,6 +769,12 @@ interface IAlchemistV3Errors {
 
     /// @notice An error which is used to indicate that the account id used is not linked to any owner
     error UnknownAccountOwnerIDError();
+
+    /// @notice An error which is used to indicate that the NFT address being set is the zero address
+    error AlchemistV3NFTZeroAddressError();
+
+    /// @notice An error which is used to indicate that the NFT address for the Alchemist has already been set
+    error AlchemistV3NFTAlreadySetError();
 }
 
 /// @title  IAlchemistV3

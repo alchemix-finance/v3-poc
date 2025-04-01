@@ -3,10 +3,8 @@ pragma solidity 0.8.26;
 import {SafeCast} from "./SafeCast.sol";
 
 library StakingGraph {
-    using SafeCast for int256;
-
     function update(mapping(uint256 => int256) storage graph, uint256 index, uint256 n, int256 delta) internal {
-        index += 1;        
+        index += 1;
         while (index <= n) {
             graph[index] += delta;
 
@@ -23,7 +21,7 @@ library StakingGraph {
 
             assembly {
                 index := sub(index, and(index, sub(0, index)))
-            }        
+            }
         }
     }
 }

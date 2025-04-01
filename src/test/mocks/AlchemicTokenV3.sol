@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity 0.8.26;
 
-import {AccessControl} from "../lib/openzeppelin-contracts/contracts/access/AccessControl.sol";
-import {ERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-import {Ownable} from "../lib/openzeppelin-contracts/contracts/access/Ownable.sol";
-import {ReentrancyGuard} from "../lib/openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
+import {AccessControl} from "../../../lib/openzeppelin-contracts/contracts/access/AccessControl.sol";
+import {ERC20} from "../../../lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+import {Ownable} from "../../../lib/openzeppelin-contracts/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "../../../lib/openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
 
-import {IllegalArgument, IllegalState, Unauthorized} from "./base/Errors.sol";
+import {IllegalArgument, IllegalState, Unauthorized} from "../../base/Errors.sol";
 
-import {IERC3156FlashLender} from "../lib/openzeppelin-contracts/contracts/interfaces/IERC3156FlashLender.sol";
-import {IERC3156FlashBorrower} from "../lib/openzeppelin-contracts/contracts/interfaces/IERC3156FlashBorrower.sol";
+import {IERC3156FlashLender} from "../../../lib/openzeppelin-contracts/contracts/interfaces/IERC3156FlashLender.sol";
+import {IERC3156FlashBorrower} from "../../../lib/openzeppelin-contracts/contracts/interfaces/IERC3156FlashBorrower.sol";
 
 /// @title  AlchemicTokenV3
 /// @author Alchemix Finance

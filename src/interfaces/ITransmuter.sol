@@ -1,35 +1,19 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.26;
 
+import "./IAlchemistV3.sol";
+
 interface ITransmuter {
-    struct AlchemistEntry {
-        // TODO: Add other necessary alchemist data here
-        uint256 index;
-        bool isActive;
-    }
-
-    // TODO: Potentially replace this with NFT respresented position
     struct StakingPosition {
-        // Alchemist from which collateral will be drawn from. 
-        // TODO: figure out how to handle this for multi collateral positions
-        // Scoopy suggested allowing users to claim an even mix of assets from all registered alchemists n times faster than usual
-        // For now will handle as single collateral asset.
-        address alchemist;
-
-        // Address of the yield token address that the user requested. 
-        address yieldToken;
-
         // Amount staked.
         uint256 amount;
-
         // Block when the position was opened
         uint256 startBlock;
-
         // Time when the transmutation will be complete/claimable.
         uint256 maturationBlock;
     }
 
-    struct InitializationParams {
+    struct TransmuterInitializationParams {
         address syntheticToken;
         address feeReceiver;
         uint256 timeToTransmute;
@@ -38,11 +22,21 @@ interface ITransmuter {
         uint256 graphSize;
     }
 
+    /// @notice Gets the address of the alchemist.
+    ///
+    /// @return alchemist The alchemist address.
+    function alchemist() external view returns (IAlchemistV3 alchemist);
+
     /// @notice Gets the address of the admin.
     ///
     /// @return admin The admin address.
     function admin() external view returns (address admin);
-    
+
+    /// @notice Gets the address of the pending admin.
+    ///
+    /// @return pendingAdmin The pending admin address.
+    function pendingAdmin() external view returns (address pendingAdmin);
+
     /// @notice Returns the version of the alchemist.
     function version() external view returns (string memory version);
 
@@ -75,24 +69,32 @@ interface ITransmuter {
 
     function protocolFeeReceiver() external view returns (address receiver);
 
-    /// @notice Adds `alchemist` address to list of active alchemists.
+    /// @notice Sets the pending administrator.
     ///
-    /// @notice `alchemist` must not have been previously added.
+    /// @notice `msg.sender` must be the admin or this call will will revert with an {Unauthorized} error.
     ///
-    /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    /// @notice Emits a {PendingAdminUpdated} event.
     ///
-    /// @param alchemist    The address to add.
-    function addAlchemist(address alchemist) external;
+    /// @dev This is the first step in the two-step process of setting a new administrator. After this function is called, the pending administrator will then need to call {acceptAdmin} to complete the process.
+    ///
+    /// @param value The address to set the pending admin to.
+    function setPendingAdmin(address value) external;
 
-    /// @notice Removes `alchemist` address to list of active alchemists.
-    ///
-    /// @notice `alchemist` must have been previously added.
+    /// @notice Allows for `msg.sender` to accepts the role of administrator.
     ///
     /// @notice `msg.sender` must be the admin or this call will revert with an {Unauthorized} error.
+    /// @notice The current pending administrator must be non-zero or this call will revert with an {IllegalState} error.
     ///
+    /// @dev This is the second step in the two-step process of setting a new administrator. After this function is successfully called, this pending administrator will be reset and the new administrator will be set.
     ///
-    /// @param alchemist    The address to remove.
-    function removeAlchemist(address alchemist) external;
+    /// @notice Emits a {AdminUpdated} event.
+    /// @notice Emits a {PendingAdminUpdated} event.
+    function acceptAdmin() external;
+
+    /// @notice Set a new alchemist for redemptions.
+    ///
+    /// @param alchemist The address of the new alchemist.
+    function setAlchemist(address alchemist) external;
 
     /// @notice Updates transmuter deposit limit to `cap`.
     ///
@@ -134,33 +136,21 @@ interface ITransmuter {
     /// @param receiver The address of the new fee receiver.
     function setProtocolFeeReceiver(address receiver) external;
 
-    /// @notice Gets entry data for `alchemist`.
+    /// @notice Gets position info for `id`.
     ///
-    /// @param alchemist    Address of the alchemist to query.
+    /// @param id      NFT ID,
     ///
-    /// @return index   Index of `alchemist` in the list of alchemists.
-    /// @return active  Status of `alchemist` activation.
-    function alchemistEntries(address alchemist) external view returns (uint256 index, bool active);
-
-    /// @notice Gets position info for `account`.
-    ///
-    /// @param account  Account address to query
-    /// @param ids      Array of position Ids to query
-    ///
-    /// @return positions   Array of position data.
-    function getPositions(address account, uint256[] calldata ids) external view returns(StakingPosition[] memory positions);
+    /// @return position   Position data.
+    function getPosition(uint256 id) external view returns (StakingPosition memory position);
 
     /// @notice Creates a new staking position in the transmuter.
     ///
     /// @notice `depositAmount` must be non-zero or this call will revert with a {DepositZeroAmount} error.
-    /// @notice `alchemist` must be registered in the transmuter or this call will revert with a {NotRegisteredAlchemist} error.
     ///
     /// @notice Emits a {PositionCreated} event.
     ///
-    /// @param alchemist        Alchemist deployment to pull funds from.
-    /// @param underlying       Address of the underlying token to receive during the transmutation.
     /// @param depositAmount    Amount of debt tokens to deposit.
-    function createRedemption(address alchemist, address underlying, uint256 depositAmount) external;
+    function createRedemption(uint256 depositAmount) external;
 
     /// @notice Claims a staking position from the transmuter.
     ///
@@ -185,31 +175,29 @@ interface ITransmuter {
     /// @param admin The new admin address.
     event AdminUpdated(address admin);
 
+    /// @notice Emitted when the pending admin is updated.
+    ///
+    /// @param pendingAdmin The address of the pending admin.
+    event PendingAdminUpdated(address pendingAdmin);
+
+    /// @notice Emitted when the associated alchemist is updated.
+    ///
+    /// @param alchemist The address of the new alchemist.
+    event AlchemistUpdated(address alchemist);
+
     /// @dev Emitted when a position is created.
     ///
     /// @param creator          The address that created the position.
-    /// @param alchemist        The address of the alchemist which tokens will be claimed from.
     /// @param amountStaked     The amount of tokens staked.
     /// @param nftId            The id of the newly minted NFT.
-    event PositionCreated(
-        address indexed creator,
-        address indexed alchemist,
-        uint256 amountStaked,
-        uint256 nftId
-    );
+    event PositionCreated(address indexed creator, uint256 amountStaked, uint256 nftId);
 
     /// @dev Emitted when a position is claimed.
     ///
     /// @param claimer          The address that claimed the position.
-    /// @param alchemist        The address of the alchemist which tokens were claimed from.
     /// @param amountClaimed    The amount of tokens claimed.
     /// @param amountUnclaimed  The amount of tokens that were not transmuted.
-    event PositionClaimed(
-        address indexed claimer,
-        address indexed alchemist,
-        uint256 amountClaimed,
-        uint256 amountUnclaimed
-    );
+    event PositionClaimed(address indexed claimer, uint256 amountClaimed, uint256 amountUnclaimed);
 
     /// @dev Emitted when the graph size is extended.
     ///
@@ -220,6 +208,11 @@ interface ITransmuter {
     ///
     /// @param cap  The new transmuter deposit cap.
     event DepositCapUpdated(uint256 cap);
+
+    /// @dev Emitted when the transmutaiton time is updated.
+    ///
+    /// @param time  The new transmutation time in blocks.
+    event TransmutationTimeUpdated(uint256 time);
 
     /// @dev Emitted when the transmutaiton fee is updated.
     ///
@@ -235,5 +228,4 @@ interface ITransmuter {
     ///
     /// @param recevier  The new receiver.
     event ProtocolFeeReceiverUpdated(address recevier);
-}   
-
+}

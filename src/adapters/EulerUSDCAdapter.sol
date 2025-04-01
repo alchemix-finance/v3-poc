@@ -20,28 +20,6 @@ contract EulerUSDCAdapter is ITokenAdapter {
     }
 
     function price() external view returns (uint256) {
-        return IERC4626(token).convertToAssets(1e6);
-    }
-
-    function wrap(uint256 amount, address recipient) external returns (uint256) {
-		// Transfer the underlying token from the sender to the adapter
-		TokenUtils.safeTransferFrom(underlyingToken, msg.sender, address(this), amount);
-
-        TokenUtils.safeApprove(underlyingToken, token, 0);
-        TokenUtils.safeApprove(underlyingToken, token, amount);
-		uint256 shares = IERC4626(token).deposit(amount, recipient);
-
-		TokenUtils.safeTransfer(token, recipient, shares);
-		return shares;
-    }
-
-    function unwrap(uint256 amount, address recipient) external returns (uint256) {
-        // Transfer the shares from the Alchemist to the Adapter
-		TokenUtils.safeTransferFrom(token, msg.sender, address(this), amount);
-
-		uint256 underlying = IERC4626(token).redeem(amount, recipient, address(this));
-
-		TokenUtils.safeTransfer(underlyingToken, recipient, underlying);
-		return underlying;
+        return IERC4626(token).convertToAssets(10**TokenUtils.expectDecimals(token));
     }
 }
