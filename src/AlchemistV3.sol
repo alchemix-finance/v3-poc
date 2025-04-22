@@ -464,7 +464,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     }
 
     /// @inheritdoc IAlchemistV3Actions
-    function repay(uint256 amount, uint256 recipientTokenId) public returns (uint256) {
+    function repay(uint256 amount, uint256 recipientTokenId) external returns (uint256) {
         _checkArgument(amount > 0);
         _checkForValidAccountId(recipientTokenId);
         Account storage account = _accounts[recipientTokenId];
