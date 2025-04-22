@@ -18,3 +18,9 @@ error InsufficientAllowance();
 
 /// @notice An error used to indicate that the function input data is missing
 error MissingInputData();
+
+/// @notice An error used to indicate that the function input data is missing
+error ZeroAmount();
+
+/// @notice An error used to indicate that the function input data is missing
+error ZeroAddress();

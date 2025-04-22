@@ -23,7 +23,6 @@ import {InsufficientAllowance} from "../base/Errors.sol";
 import {Unauthorized, IllegalArgument, IllegalState, MissingInputData} from "../base/Errors.sol";
 import {AlchemistNFTHelper} from "./libraries/AlchemistNFTHelper.sol";
 import {AlchemistV3Position} from "../AlchemistV3Position.sol";
-import {ETHUSDPriceFeedAdapter} from "../adapters/ETHUSDPriceFeedAdapter.sol";
 import {AlchemistETHVault} from "../AlchemistETHVault.sol";
 import {TokenUtils} from "../libraries/TokenUtils.sol";
 
@@ -44,7 +43,6 @@ contract RedemptionIntegrationTest is Test {
     Transmuter transmuterLogic;
     AlchemicTokenV3 alToken;
     Whitelist whitelist;
-    ETHUSDPriceFeedAdapter ethUsdAdapter;
 
     // Total minted debt
     uint256 public minted;
@@ -129,7 +127,6 @@ contract RedemptionIntegrationTest is Test {
         transmuterLogic = new Transmuter(transParams);
         alchemistLogic = new AlchemistV3();
         whitelist = new Whitelist();
-        ethUsdAdapter = new ETHUSDPriceFeedAdapter(ETH_USD_PRICE_FEED_MAINNET, ETH_USD_UPDATE_TIME_MAINNET, TokenUtils.expectDecimals(address(USDC)));
 
         // // Proxy contracts
         // // TransmuterBuffer proxy
@@ -159,7 +156,6 @@ contract RedemptionIntegrationTest is Test {
             collateralizationLowerBound: 1_052_631_578_950_000_000, // 1.05 collateralization
             globalMinimumCollateralization: 1_111_111_111_111_111_111, // 1.1
             tokenAdapter: address(vaultAdapter),
-            ethUsdAdapter: address(ethUsdAdapter),
             transmuter: address(transmuterLogic),
             protocolFee: 100,
             protocolFeeReceiver: receiver,

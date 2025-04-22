@@ -8,6 +8,12 @@ pragma solidity 0.8.26;
  */
 interface IAlchemistETHVault {
     /**
+     * @notice Get the ERC20 token managed by this vault
+     * @return The WETH token address
+     */
+    function token() external view returns (address);
+
+    /**
      * @notice Deposit WETH into the vault
      * @param amount Amount of WETH to deposit
      */
