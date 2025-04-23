@@ -23,7 +23,6 @@ import {Unauthorized, IllegalArgument, IllegalState, MissingInputData} from "../
 import {AlchemistNFTHelper} from "./libraries/AlchemistNFTHelper.sol";
 import {AlchemistV3Position} from "../AlchemistV3Position.sol";
 import {AlchemistETHVault} from "../AlchemistETHVault.sol";
-import {ETHUSDPriceFeedAdapter} from "../adapters/ETHUSDPriceFeedAdapter.sol";
 import {TokenUtils} from "../libraries/TokenUtils.sol";
 
 contract InvariantsTest is Test {
@@ -34,7 +33,6 @@ contract InvariantsTest is Test {
     Transmuter transmuter;
     AlchemistV3Position alchemistNFT;
     AlchemistETHVault ethVault;
-    ETHUSDPriceFeedAdapter ethUsdAdapter;
 
     // // Proxy variables
     TransparentUpgradeableProxy proxyAlchemist;
@@ -116,9 +114,6 @@ contract InvariantsTest is Test {
 
         fakeUnderlyingToken = new TestERC20(100e18, uint8(18));
         fakeYieldToken = new TestYieldToken(address(fakeUnderlyingToken));
-        ethUsdAdapter =
-            new ETHUSDPriceFeedAdapter(ETH_USD_PRICE_FEED_MAINNET, ETH_USD_UPDATE_TIME_MAINNET, TokenUtils.expectDecimals(address(fakeUnderlyingToken)));
-
         alToken = new AlchemicTokenV3(_name, _symbol, _flashFee);
 
         ITransmuter.TransmuterInitializationParams memory transParams = ITransmuter.TransmuterInitializationParams({
@@ -162,7 +157,6 @@ contract InvariantsTest is Test {
             collateralizationLowerBound: 1_052_631_578_950_000_000, // 1.05 collateralization
             globalMinimumCollateralization: 1_111_111_111_111_111_111, // 1.1
             tokenAdapter: address(fakeYieldToken),
-            ethUsdAdapter: address(ethUsdAdapter),
             transmuter: address(transmuterLogic),
             protocolFee: 0,
             protocolFeeReceiver: address(10),

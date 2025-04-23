@@ -17,8 +17,19 @@ contract MockAlchemist {
 
     uint256 public constant FIXED_POINT_SCALAR = 1e18;
 
+    uint256 public underlyingValue;
+    uint256 public syntheticsIssued;
+
     constructor(AlEth _collateral) {
         collateral = _collateral;
+    }
+
+    function setUnderlyingValue(uint256 amount) public {
+        underlyingValue = amount;
+    }
+
+    function setSyntheticsIssued(uint256 amount) public {
+        syntheticsIssued = amount;
     }
 
     function convertYieldTokensToUnderlying(uint256 amount) external pure returns (uint256) {
@@ -45,16 +56,28 @@ contract MockAlchemist {
         return type(uint256).max;
     }
 
-    function totalSyntheticsIssued() external pure returns (uint256) {
-        return type(uint256).max;
+    function totalSyntheticsIssued() external returns (uint256) {
+        if (syntheticsIssued > 0) {
+            return syntheticsIssued;
+        } else {
+            return type(uint256).max / 1e20;
+        }
     }
 
-    /*    function adjustTotalSyntheticsIssued(uint256 amount) external {
+    function adjustTotalSyntheticsIssued(uint256 amount) external {
 
-    } */
+    }
 
     function yieldToken() external view returns (address) {
         return address(collateral);
+    }
+
+    function getTotalUnderlyingValue() external view returns (uint256) {
+        if (underlyingValue > 0) {
+            return underlyingValue;
+        } else {
+            return type(uint256).max / 1e20;
+        }
     }
 }
 
@@ -87,6 +110,34 @@ contract TransmuterTest is Test {
 
         vm.prank(address(0xbeef));
         alETH.approve(address(transmuter), type(uint256).max);
+    }
+
+    function testSetAdmin() public {
+        transmuter.setPendingAdmin(address(0xbeef));
+        
+        vm.prank(address(0xbeef));
+        transmuter.acceptAdmin();
+
+        assertEq(address(0xbeef), transmuter.admin());
+    }
+
+    function testSetAdminWrongAddress() public {
+        transmuter.setPendingAdmin(address(0xbeef));
+        
+        vm.startPrank(address(0xbeef123));
+        vm.expectRevert();
+        transmuter.acceptAdmin();
+        vm.stopPrank();
+    }
+
+
+    function testURI() public {
+        vm.prank(address(0xbeef));
+        transmuter.createRedemption(100e18);
+
+        Transmuter.StakingPosition memory position = transmuter.getPosition(1);
+
+        transmuter.tokenURI(1);
     }
 
     function testSetTransmutaitonFeeTooHigh() public {
@@ -124,7 +175,7 @@ contract TransmuterTest is Test {
 
     function testFuzzCreateRedemption(uint256 amount) public {
         vm.assume(amount > 0);
-        vm.assume(amount < uint256(type(int256).max) / 1e20);
+        vm.assume(amount < uint256(type(int256).max) / 1e50);
 
         vm.prank(address(0xbeef));
         transmuter.createRedemption(amount);
@@ -142,6 +193,14 @@ contract TransmuterTest is Test {
 
     function testCreateRedemptionDepositCapReached() public {
         transmuter.setDepositCap(90e18);
+
+        vm.expectRevert(DepositCapReached.selector);
+        transmuter.createRedemption(100e18);
+    }
+
+    function testCreateRedemptionDepositCapReachedSynthetic() public {
+        transmuter.setDepositCap(110e18);
+        alchemist.setSyntheticsIssued(90e18);
 
         vm.expectRevert(DepositCapReached.selector);
         transmuter.createRedemption(100e18);
@@ -168,6 +227,26 @@ contract TransmuterTest is Test {
         transmuter.claimRedemption(1);
 
         assertEq(collateralToken.balanceOf(address(0xbeef)), alchemist.convertUnderlyingTokensToYield(100e18));
+        assertEq(alETH.balanceOf(address(transmuter)), 0);
+    }
+
+    function testClaimRedemptionBadDebt() public {
+        deal(address(collateralToken), address(transmuter), uint256(type(int256).max) / 1e20);
+
+        vm.prank(address(0xbeef));
+        transmuter.createRedemption(100e18);
+
+        vm.roll(block.number + 5_256_000);
+
+        assertEq(collateralToken.balanceOf(address(0xbeef)), 0);
+        assertEq(alETH.balanceOf(address(transmuter)), 100e18);
+
+        alchemist.setUnderlyingValue((type(uint256).max / 1e20) / 2);
+
+        vm.prank(address(0xbeef));
+        transmuter.claimRedemption(1);
+
+        assertEq(collateralToken.balanceOf(address(0xbeef)), alchemist.convertUnderlyingTokensToYield(100e18) / 2);
         assertEq(alETH.balanceOf(address(transmuter)), 0);
     }
 
@@ -213,7 +292,7 @@ contract TransmuterTest is Test {
         deal(address(collateralToken), address(transmuter), uint256(type(int256).max) / 1e20);
 
         vm.assume(amount > 0);
-        vm.assume(amount < uint256(type(int256).max) / 1e20);
+        vm.assume(amount < uint256(type(int256).max) / 1e50);
 
         vm.prank(address(0xbeef));
         transmuter.createRedemption(amount);
