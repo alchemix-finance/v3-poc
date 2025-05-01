@@ -165,7 +165,7 @@ Helper functions for common tasks inside tests and commonly used constants shoul
 
 ### Review
 
-Review should be required prior to any merge into `dev`. Optimially, at least two other parties should review. This can be subject to change based on team size. In an organization with a dedicated Security team, Security shold participate in the reviews. 
+Review should be required prior to any merge into `dev`. Optimially, at least two other parties should review. This can be subject to change based on team size. In an organization with a dedicated Security team, Security shold participate in the reviews.
 
 Review includes inspection of what production code has changed, verifying that the tests assert intended behavior and absence of unintended effects, and running the tests.
 
