@@ -32,19 +32,17 @@ contract MorphoYearnOGWETHStrategy is MYTStrategy {
     ) MYTStrategy(_myt, _params) {
         weth = WETH(_weth);
         vault = IERC4626(_vault);
-        require(vault.asset() == _weth, "Vault asset != WETH");
     }
 
     function _allocate(uint256 amount) internal override returns (uint256 depositReturn) {
-        require(msg.value == amount, "bad msg.value");
+        require(msg.value == amount);
         weth.deposit{value: amount}();
         depositReturn = vault.deposit(amount, address(MYT));
     }
 
-    function _deallocate(uint256 amount) internal override returns (uint256 withdrawReturn) {
-        require(IERC20(address(vault)).transferFrom(msg.sender, address(this), amount), "pull shares fail");
-        uint256 assetsOut = vault.redeem(amount, address(this), address(this));
-        weth.withdraw(assetsOut);
+    function _deallocate(uint256 amount) internal override returns (uint256 withdrawReturn) {        
+        uint256 withdrawReturn = vault.redeem(amount, address(this), address(MYT));
+        _unwrapWETH(withdrawReturn, address(MYT));
     }
 
     function _unwrapWETH(uint256 amount, address to) internal {
