@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import "forge-std/Test.sol";
 
 // Adjust these imports to your layout
-import {TokeAutoEthStrategy} from "src/strategies/TokeAutoEth.sol";
+import {TokeAutoEthStrategy} from "src/strategies/mainnet/TokeAutoEth.sol";
 import {IMYTStrategy} from "src/interfaces/IMYTStrategy.sol";
 import {IMainRewarder, IAutopilotRouter} from "src/strategies/interfaces/ITokemac.sol";
 import {IERC4626} from "../../../lib/openzeppelin-contracts/contracts/interfaces/IERC4626.sol";

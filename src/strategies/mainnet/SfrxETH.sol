@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 pragma solidity 0.8.28;
-import {MYTStrategy} from "../MYTStrategy.sol";
+import {MYTStrategy} from "../../MYTStrategy.sol";
 
 interface FraxMinter {
     function submitAndDeposit(address recipient) external payable returns (uint256);

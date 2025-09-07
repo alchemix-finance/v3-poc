@@ -36,7 +36,7 @@ optimizer = true
 optimizer_runs = 999999
 via_ir = true
 evm_version = "cancun"
-solc = "0.8.28"
+auto_detect_solc = true
 verbosity = 2
 ffi = true
 

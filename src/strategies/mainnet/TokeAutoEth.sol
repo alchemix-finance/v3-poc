@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 pragma solidity 0.8.28;
-import {MYTStrategy} from "../MYTStrategy.sol";
+import {MYTStrategy} from "../../MYTStrategy.sol";
 
-import {IERC4626} from "../../lib/openzeppelin-contracts/contracts/interfaces/IERC4626.sol";
-import {IMainRewarder, IAutopilotRouter} from "./interfaces/ITokemac.sol";
+import {IERC4626} from "../../../lib/openzeppelin-contracts/contracts/interfaces/IERC4626.sol";
+import {IMainRewarder, IAutopilotRouter} from "../interfaces/ITokemac.sol";
 
 interface WETH {
     function deposit() external payable;
@@ -22,7 +22,7 @@ contract TokeAutoEthStrategy is MYTStrategy {
     WETH public immutable weth;
     RootOracle public immutable oracle;
     address public immutable rewardToken;
-
+    
     constructor(
         address _myt,
         StrategyParams memory _params,

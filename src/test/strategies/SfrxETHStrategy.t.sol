@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 
-import {SfrxETHStrategy} from "src/strategies/SfrxETH.sol";
+import {SfrxETHStrategy} from "src/strategies/mainnet/SfrxETH.sol";
 import {IMYTStrategy} from "src/interfaces/IMYTStrategy.sol";
 
 interface IERC20 {

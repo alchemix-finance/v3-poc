@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 pragma solidity 0.8.28;
-import {MYTStrategy} from "../MYTStrategy.sol";
+import {MYTStrategy} from "../../MYTStrategy.sol";
 
-import {IERC4626} from "../../lib/openzeppelin-contracts/contracts/interfaces/IERC4626.sol";
+import {IERC4626} from "../../../lib/openzeppelin-contracts/contracts/interfaces/IERC4626.sol";
 
 interface WETH {
     function deposit() external payable;

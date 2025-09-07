@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 pragma solidity 0.8.28;
-import {MYTStrategy} from "../MYTStrategy.sol";
+import {MYTStrategy} from "../../MYTStrategy.sol";
 
 interface stETH {
     function sharesOf(address account) external view returns (uint256);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {MYTStrategy} from "../MYTStrategy.sol";
+import {MYTStrategy} from "../../MYTStrategy.sol";
 
 interface IERC20 {
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
@@ -41,7 +41,7 @@ contract MorphoYearnOGWETHStrategy is MYTStrategy {
     }
 
     function _deallocate(uint256 amount) internal override returns (uint256 withdrawReturn) {        
-        uint256 withdrawReturn = vault.redeem(amount, address(this), address(MYT));
+        withdrawReturn = vault.redeem(amount, address(this), address(MYT));
         _unwrapWETH(withdrawReturn, address(MYT));
     }
 
