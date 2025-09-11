@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {MYTStrategy} from "../../MYTStrategy.sol";
 import {IERC4626} from "../../../lib/openzeppelin-contracts/contracts/interfaces/IERC4626.sol";
 import {IERC20} from "../../../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-// import {OracleLibrary} from "../../lib/v3-periphery/contracts/libraries/OracleLibrary.sol";
+// import {OracleLibrary} from "../../../lib/v3-periphery/contracts/libraries/OracleLibrary.sol";
 
 interface REUL is IERC20 {
     function underlying() external view returns (IERC20);
@@ -29,6 +29,8 @@ contract EulerUSDStrategy is MYTStrategy {
     IERC20 public immutable underlying;
     IERC20 public immutable rewardUnderlying;
     REUL public immutable rEUL;
+
+    address public immutable WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     uint256 private _lastEulBal;
     uint256 private _eulClaimed;
@@ -89,54 +91,56 @@ contract EulerUSDStrategy is MYTStrategy {
         ratePerSec = growth / dt;
     }
 
-    function _computeRewardsRatePerSecond() internal override returns (uint256) {
-        uint256 eulPerSec18 = _realizedEulPerSecWad();
-        if (eulPerSec18 == 0) return 0;
 
-        uint256 pxUsdcPerEul18 = eulUsdc.usdcPerEulWad(); 
-        if (pxUsdcPerEul18 == 0) return 0;
+    // TODO figure out how to make library compatible with newer solc 
+    // function _computeRewardsRatePerSecond() internal override returns (uint256) {
+    //     uint256 eulPerSec18 = _realizedEulPerSecWad();
+    //     if (eulPerSec18 == 0) return 0;
 
-        uint256 shares = IERC20(address(eulerVault)).balanceOf(address(MYT));
-        if (shares == 0) return 0;
-        uint256 pps6 = eulerVault.convertToAssets(1e18);
-        if (pps6 == 0) return 0;
-        uint256 tvlUsdc18 = (shares * pps6 * 1e12) / 1e18;
-        if (tvlUsdc18 == 0) return 0;
+    //     uint256 pxUsdcPerEul18 = _eulUsdcTwapWad(0xb003df4b243f938132e8cadbeb237abc5a889fb4, 0xe0554a476a092703abdb3ef35c80e0d76d32939f, 10000); 
+    //     if (pxUsdcPerEul18 == 0) return 0;
 
-        uint256 usdcPerSec18 = (eulPerSec18 * pxUsdcPerEul18) / 1e18;
+    //     uint256 shares = IERC20(address(eulerVault)).balanceOf(address(MYT));
+    //     if (shares == 0) return 0;
+    //     uint256 pps6 = eulerVault.convertToAssets(1e18);
+    //     if (pps6 == 0) return 0;
+    //     uint256 tvlUsdc18 = (shares * pps6 * 1e12) / 1e18;
+    //     if (tvlUsdc18 == 0) return 0;
 
-        return (usdcPerSec18 * 1e18) / tvlUsdc18;
-    }
+    //     uint256 usdcPerSec18 = (eulPerSec18 * pxUsdcPerEul18) / 1e18;
 
-    function _realizedEulPerSecWad() internal returns (uint256 eulPerSec18) {
-        uint256 currentTime = block.timestamp;
-        if (_lastRewardTime == 0) { _lastRewardTime = currentTime; _lastEulBal = _eulClaimed; return 0; }
+    //     return (usdcPerSec18 * 1e18) / tvlUsdc18;
+    // }
 
-        uint256 dt = currentTime - _lastRewardTime;
-        if (dt == 0) return 0;
+    // function _realizedEulPerSecWad() internal returns (uint256 eulPerSec18) {
+    //     uint256 currentTime = block.timestamp;
+    //     if (_lastRewardTime == 0) { _lastRewardTime = currentTime; _lastEulBal = _eulClaimed; return 0; }
 
-        uint256 delta = _eulClaimed - _lastEulBal;
-        _lastEulBal = _eulClaimed;
-        _lastRewardTime = currentTime;
+    //     uint256 dt = currentTime - _lastRewardTime;
+    //     if (dt == 0) return 0;
 
-        if (delta == 0) return 0;
-        return delta / dt;
-    }
+    //     uint256 delta = _eulClaimed - _lastEulBal;
+    //     _lastEulBal = _eulClaimed;
+    //     _lastRewardTime = currentTime;
 
-    function _eulUsdcTwapWad(
-        address eulWethPool,
-        address usdcWethPool,
-        uint32  windowSeconds
-    ) internal view returns (uint256 price1e18) {
-        // 1) EUL/ETH 
-        (int24 tickEulEth,) = OracleLibrary.consult(eulWethPool, windowSeconds);
-        uint256 eulPerEth = OracleLibrary.getQuoteAtTick(tickEulEth, 1e18, address(EUL), address(WETH));
+    //     if (delta == 0) return 0;
+    //     return delta / dt;
+    // }
 
-        // 2) ETH/USDC 
-        (int24 tickEthUsdc,) = OracleLibrary.consult(usdcWethPool, windowSeconds);
-        uint256 ethPerUsdc6 = OracleLibrary.getQuoteAtTick(tickEthUsdc, 1e18, address(WETH), address(USDC));
+    // function _eulUsdcTwapWad(
+    //     address eulWethPool,
+    //     address usdcWethPool,
+    //     uint32  windowSeconds
+    // ) internal view returns (uint256 price1e18) {
+    //     // 1) EUL/ETH 
+    //     (int24 tickEulEth,) = OracleLibrary.consult(eulWethPool, windowSeconds);
+    //     uint256 eulPerEth = OracleLibrary.getQuoteAtTick(tickEulEth, 1e18, address(rewardUnderlying), address(WETH));
 
-        // 3) EUL/USDC
-        return (eulPerEth * ethPerUsdc6) / 1e6;
-    }
+    //     // 2) ETH/USDC 
+    //     (int24 tickEthUsdc,) = OracleLibrary.consult(usdcWethPool, windowSeconds);
+    //     uint256 ethPerUsdc6 = OracleLibrary.getQuoteAtTick(tickEthUsdc, 1e18, address(WETH), address(underlying));
+
+    //     // 3) EUL/USDC
+    //     return (eulPerEth * ethPerUsdc6) / 1e6;
+    // }
 }
