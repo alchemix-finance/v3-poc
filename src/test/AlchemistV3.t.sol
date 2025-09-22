@@ -223,6 +223,8 @@ contract AlchemistV3Test is Test {
         deal(address(yieldToken), alice, accountFunds);
         deal(address(yieldToken), carol, accountFunds);
         deal(address(yieldToken), bob, accountFunds);
+
+        deal(address(alToken), address(alice), accountFunds);
         deal(address(alToken), address(0xdad), 1000e18);
         deal(address(alToken), address(bob), accountFunds);
 
@@ -1828,7 +1830,7 @@ contract AlchemistV3Test is Test {
         uint256 initialVaultSupply = IERC20(address(yieldToken)).totalSupply();
         // increasing yeild token suppy by 4000 bps or 40% while keeping the unederlying supply unchanged
         uint256 modifiedVaultSupply = (initialVaultSupply * 4000 / 10_000) + initialVaultSupply;
-        deal(address(yieldToken), address(0xdead), initialVaultSupply * 4000 / 10_000, true);
+        stdstore.target(address(yieldToken)).sig("totalSupply()").checked_write(modifiedVaultSupply);
         assertEq(IERC20(address(yieldToken)).totalSupply(), modifiedVaultSupply);
         // ensure initial debt is correct
         uint256 expectedDebt = alchemist.totalValue(tokenIdFor0xBeef) * FIXED_POINT_SCALAR / minimumCollateralization;
@@ -1896,7 +1898,7 @@ contract AlchemistV3Test is Test {
         // yieldToken.updateMockTokenSupply(initialVaultSupply); FIXME
         // increasing yeild token suppy by 4000 bps or 40%  while keeping the unederlying supply unchanged
         uint256 modifiedVaultSupply = (initialVaultSupply * 590 / 10_000) + initialVaultSupply;
-        deal(address(yieldToken), address(0xdead), initialVaultSupply * 590 / 10_000, true);
+        stdstore.target(address(yieldToken)).sig("totalSupply()").checked_write(modifiedVaultSupply);
         assertEq(IERC20(address(yieldToken)).totalSupply(), modifiedVaultSupply);
         // ensure initial debt is correct
         uint256 expectedDebt = alchemist.totalValue(tokenIdFor0xBeef) * FIXED_POINT_SCALAR / minimumCollateralization;
@@ -1975,7 +1977,7 @@ contract AlchemistV3Test is Test {
         // yieldToken.updateMockTokenSupply(initialVaultSupply); FIXME
         // increasing yeild token suppy by 1200 bps or 12%  while keeping the unederlying supply unchanged
         uint256 modifiedVaultSupply = (initialVaultSupply * 1200 / 10_000) + initialVaultSupply;
-        deal(address(yieldToken), address(0xdead), initialVaultSupply * 590 / 10_000, true);
+        stdstore.target(address(yieldToken)).sig("totalSupply()").checked_write(modifiedVaultSupply);
         assertEq(IERC20(address(yieldToken)).totalSupply(), modifiedVaultSupply);
 
         // let another user liquidate the previous user position
@@ -2058,7 +2060,7 @@ contract AlchemistV3Test is Test {
         // yieldToken.updateMockTokenSupply(initialVaultSupply); FIXME
         // increasing yeild token suppy by 59 bps or 5.9%  while keeping the unederlying supply unchanged
         uint256 modifiedVaultSupply = (initialVaultSupply * 590 / 10_000) + initialVaultSupply;
-        deal(address(yieldToken), address(0xdead), initialVaultSupply * 590 / 10_000, true);
+        stdstore.target(address(yieldToken)).sig("totalSupply()").checked_write(modifiedVaultSupply);
         assertEq(IERC20(address(yieldToken)).totalSupply(), modifiedVaultSupply);
 
         // let another user liquidate the previous user position
@@ -2367,7 +2369,7 @@ contract AlchemistV3Test is Test {
         uint256 initialVaultSupply = IERC20(address(yieldToken)).totalSupply();
         // increasing yeild token suppy by 59 bps or 5.9%  while keeping the unederlying supply unchanged
         uint256 modifiedVaultSupply = (initialVaultSupply * 590 / 10_000) + initialVaultSupply;
-        deal(address(yieldToken), address(0xdead), initialVaultSupply * 590 / 10_000, true);
+        stdstore.target(address(yieldToken)).sig("totalSupply()").checked_write(modifiedVaultSupply);
 
         // ensure initial debt is correct
         uint256 expectedDebt = alchemist.totalValue(tokenIdFor0xBeef) * FIXED_POINT_SCALAR / minimumCollateralization;
@@ -2447,7 +2449,7 @@ contract AlchemistV3Test is Test {
         uint256 initialVaultSupply = IERC20(address(yieldToken)).totalSupply();
         // increasing yeild token suppy by 1200 bps or 12% while keeping the unederlying supply unchanged
         uint256 modifiedVaultSupply = (initialVaultSupply * 1200 / 10_000) + initialVaultSupply;
-        deal(address(yieldToken), address(0xdead), initialVaultSupply * 1200 / 10_000, true);
+        stdstore.target(address(yieldToken)).sig("totalSupply()").checked_write(modifiedVaultSupply);
         assertEq(IERC20(address(yieldToken)).totalSupply(), modifiedVaultSupply);
         vm.roll(block.number + 5_256_000);
         // let another user liquidate the previous user position
@@ -2496,7 +2498,7 @@ contract AlchemistV3Test is Test {
         uint256 initialVaultSupply = IERC20(address(yieldToken)).totalSupply();
         // decreasing yeild token suppy by 50%  while keeping the unederlying supply unchanged
         uint256 modifiedVaultSupply = (initialVaultSupply * 5000 / 10_000) + initialVaultSupply;
-        deal(address(yieldToken), address(0xdead), initialVaultSupply * 5000 / 10_000, true);
+        stdstore.target(address(yieldToken)).sig("totalSupply()").checked_write(modifiedVaultSupply);
         // ensure initial debt is correct
         uint256 expectedDebt = alchemist.totalValue(tokenIdFor0xBeef) * FIXED_POINT_SCALAR / minimumCollateralization;
         vm.assertApproxEqAbs(prevDebt, expectedDebt, minimumDepositOrWithdrawalLoss);
@@ -2588,7 +2590,7 @@ contract AlchemistV3Test is Test {
         uint256 initialVaultSupply = IERC20(address(yieldToken)).totalSupply();
         // Drop price by 50% (increase supply by 100%)
         uint256 modifiedVaultSupply = (initialVaultSupply * 7000 / 10_000) + initialVaultSupply;
-        deal(address(yieldToken), address(0xdead), initialVaultSupply * 7000 / 10_000, true);
+        stdstore.target(address(yieldToken)).sig("totalSupply()").checked_write(modifiedVaultSupply);
         assertEq(IERC20(address(yieldToken)).totalSupply(), modifiedVaultSupply);
 
         uint256 badCollateralAfterDrop = alchemist.totalValue(tokenIdBad);
@@ -2686,7 +2688,7 @@ contract AlchemistV3Test is Test {
         uint256 initialVaultSupply = IERC20(address(yieldToken)).totalSupply();
         // increasing yeild token suppy by 59 bps or 5.9%  while keeping the unederlying supply unchanged
         uint256 modifiedVaultSupply = (initialVaultSupply * 590 / 10_000) + initialVaultSupply;
-        deal(address(yieldToken), address(0xdead), initialVaultSupply * 590 / 10_000, true);
+        stdstore.target(address(yieldToken)).sig("totalSupply()").checked_write(modifiedVaultSupply);
         assertEq(IERC20(address(yieldToken)).totalSupply(), modifiedVaultSupply);
 
         // ensure initial debt is correct
@@ -2779,7 +2781,7 @@ contract AlchemistV3Test is Test {
         uint256 initialVaultSupply = IERC20(address(yieldToken)).totalSupply();
         // increasing yeild token suppy by 9900 bps or 99% while keeping the unederlying supply unchanged
         uint256 modifiedVaultSupply = (initialVaultSupply * (10_000 * FIXED_POINT_SCALAR) / 10_000) + initialVaultSupply;
-        deal(address(yieldToken), address(0xdead), initialVaultSupply * (10_000 * FIXED_POINT_SCALAR) / 10_000, true);
+        stdstore.target(address(yieldToken)).sig("totalSupply()").checked_write(modifiedVaultSupply);
         assertEq(IERC20(address(yieldToken)).totalSupply(), modifiedVaultSupply);
         vm.roll(block.number + 5_256_000);
         // let another user liquidate the previous user position
@@ -2835,7 +2837,7 @@ contract AlchemistV3Test is Test {
         uint256 initialVaultSupply = IERC20(address(yieldToken)).totalSupply();
         // increasing yeild token suppy by 59 bps or 5.9%  while keeping the unederlying supply unchanged
         uint256 modifiedVaultSupply = (initialVaultSupply * 590 / 10_000) + initialVaultSupply;
-        deal(address(yieldToken), address(0xdead), initialVaultSupply * 590 / 10_000, true);
+        stdstore.target(address(yieldToken)).sig("totalSupply()").checked_write(modifiedVaultSupply);
         // ensure initial debt is correct
         uint256 expectedDebt = alchemist.totalValue(tokenIdFor0xBeef) * FIXED_POINT_SCALAR / minimumCollateralization;
         vm.assertApproxEqAbs(prevDebt, expectedDebt, minimumDepositOrWithdrawalLoss);
@@ -2988,7 +2990,7 @@ contract AlchemistV3Test is Test {
 
         uint256 transmuterPreviousBalance = IERC20(address(yieldToken)).balanceOf(address(transmuterLogic));
 
-        _manipulateYieldTokenPrice(410);
+        _manipulateYieldTokenPrice(8000); // Use a larger price drop to ensure undercollateralization
 
         // let another user liquidate the previous user position
         vm.startPrank(address(0xdad));
@@ -3000,7 +3002,7 @@ contract AlchemistV3Test is Test {
         accountsToLiquidate[1] = position2.tokenId;
 
         CalculateLiquidationResult memory expectedResult1 = _calculateLiquidationForAccount(position1);
-        // CalculateLiquidationResult memory expectedResult2 = _calculateLiquidationForAccount(position2);
+        CalculateLiquidationResult memory expectedResult2 = _calculateLiquidationForAccount(position2);
 
         (uint256 assets, uint256 feeInYield, uint256 feeInUnderlying) = alchemist.batchLiquidate(accountsToLiquidate);
 
@@ -3014,12 +3016,19 @@ contract AlchemistV3Test is Test {
         );
 
         /// Tests for second liquidated User ///
-        _validateLiquidatedAccountState(position2.tokenId, position2.collateral, position2.debt, 0, 0);
+        _validateLiquidatedAccountState(
+            position2.tokenId, position2.collateral, position2.debt, expectedResult2.debtToBurn, expectedResult2.liquidationAmountInYield
+        );
 
         // Tests for Liquidator ///
 
         // ensure liquidator fee is correct (3% of liquidation amount)
-        _valudateLiquidationFees(feeInYield, feeInUnderlying, expectedResult1.baseFeeInYield, expectedResult1.outSourcedFee);
+        _valudateLiquidationFees(
+            feeInYield,
+            feeInUnderlying,
+            expectedResult1.baseFeeInYield + expectedResult2.baseFeeInYield,
+            expectedResult1.outSourcedFee + expectedResult2.outSourcedFee
+        );
 
         // liquidator gets correct amount of fee
         _validateLiquidiatorState(
@@ -3029,14 +3038,15 @@ contract AlchemistV3Test is Test {
             feeInYield,
             feeInUnderlying,
             assets,
-            expectedResult1.liquidationAmountInYield
+            expectedResult1.liquidationAmountInYield + expectedResult2.liquidationAmountInYield
         );
 
 
         // transmuter recieves the liquidation amount in yield token minus the fee
         vm.assertApproxEqAbs(
             IERC20(address(yieldToken)).balanceOf(address(transmuterLogic)),
-            transmuterPreviousBalance + expectedResult1.liquidationAmountInYield - expectedResult1.baseFeeInYield,
+            transmuterPreviousBalance + expectedResult1.liquidationAmountInYield + expectedResult2.liquidationAmountInYield - expectedResult1.baseFeeInYield
+                - expectedResult2.baseFeeInYield,
             1e18
         );
     }
@@ -3056,7 +3066,7 @@ contract AlchemistV3Test is Test {
 
         uint256 transmuterPreviousBalance = IERC20(address(yieldToken)).balanceOf(address(transmuterLogic));
 
-        _manipulateYieldTokenPrice(410);
+        _manipulateYieldTokenPrice(8000); // Use a larger price drop to ensure undercollateralization
 
         // let another user liquidate the previous user position
         vm.startPrank(alice);
@@ -3234,40 +3244,40 @@ contract AlchemistV3Test is Test {
         return result;
     }
 
+    function _getAccountDebt(uint256 tokenId) internal view returns (uint256) {
+        (uint256 collateral, uint256 debt, uint256 earmarked) = alchemist.getCDP(tokenId);
+        return debt;
+    }
+
     /// helper functions to simplify batch liquidation tests
-        function _manipulateYieldTokenPrice(uint256 priceDropPercentage) internal {
+    function _manipulateYieldTokenPrice(uint256 priceDropPercentage) internal {
         // Directly manipulate the underlying token balance to create a price drop
         uint256 initialUnderlyingBalance = IERC20(fakeUnderlyingToken).balanceOf(address(yieldToken));
         uint256 vaultSupply = IERC20(address(yieldToken)).totalSupply();
-
+        
         // Ensure we don't drop the price to zero by limiting the percentage
-        priceDropPercentage = priceDropPercentage > 8000 ? 8000 : priceDropPercentage;
+        priceDropPercentage = bound(priceDropPercentage, 1000, 9500); // Between 10% and 95%
 
         // Calculate how much underlying to remove to achieve desired price drop
         uint256 amountToRemove = initialUnderlyingBalance * priceDropPercentage / 10_000;
-
-        // Make sure we leave at least 10% of the balance to avoid zero price
-        if (amountToRemove > initialUnderlyingBalance * 9 / 10) {
-            amountToRemove = initialUnderlyingBalance * 9 / 10;
-        }
 
         // Transfer underlying tokens out of the vault to decrease the price
         vm.startPrank(address(yieldToken));
         IERC20(fakeUnderlyingToken).transfer(address(0xdead), amountToRemove);
         vm.stopPrank();
 
-        // Update the vault's total supply to reflect the removed tokens
-        vaultSupply = IERC20(address(yieldToken)).totalSupply();
-
         // Verify the price dropped as expected
-        uint256 newPrice = IERC20(fakeUnderlyingToken).balanceOf(address(yieldToken)) * 1e18 /
-vaultSupply;
+        uint256 newUnderlyingBalance = IERC20(fakeUnderlyingToken).balanceOf(address(yieldToken));
+        uint256 newPrice = newUnderlyingBalance * 1e18 / vaultSupply;
         uint256 expectedPrice = (initialUnderlyingBalance - amountToRemove) * 1e18 / vaultSupply;
 
         // Log the price change for debugging
+        console.log("Initial underlying balance:", initialUnderlyingBalance);
+        console.log("New underlying balance:", newUnderlyingBalance);
         console.log("Initial price:", initialUnderlyingBalance * 1e18 / vaultSupply);
         console.log("New price:", newPrice);
         console.log("Expected price:", expectedPrice);
+        console.log("Price drop percentage:", priceDropPercentage);
 
         // Also log the total value of positions to verify they're undercollateralized
         console.log("Total underlying value:", alchemist.getTotalUnderlyingValue());
@@ -3392,7 +3402,7 @@ vaultSupply;
         uint256 initialVaultSupply = IERC20(address(yieldToken)).totalSupply();
         // increasing yeild token suppy by 12% while keeping the unederlying supply unchanged
         uint256 modifiedVaultSupply = (initialVaultSupply * 1200 / 10_000) + initialVaultSupply;
-        deal(address(yieldToken), address(0xdead), (initialVaultSupply * 1200 / 10_000), true);
+        stdstore.target(address(yieldToken)).sig("totalSupply()").checked_write(modifiedVaultSupply);
         for (uint256 i = 1; i <= 2; i++) {
         console.log("[*] redemption no: ", i);
         // calculate bad debt ratio
@@ -3566,7 +3576,8 @@ vaultSupply;
         //Malicious user directly transfering token
         address attacker = makeAddr("attacker");
         uint depositCap = alchemist.depositCap();
-        deal(address(yieldToken), attacker, depositCap);
+        deal(address(yieldToken), attacker, depositCap, true);
+        stdstore.target(address(yieldToken)).sig("totalSupply()").checked_write(depositCap);
         vm.prank(attacker);
         yieldToken.transfer(address(alchemist), depositCap);
         // User makes a deposit and borrows
@@ -3641,8 +3652,8 @@ vaultSupply;
         // Create Redemption
         vm.startPrank(alice);
         uint256 redemption = debt / 2;
-        // FIXME amount is 1e18 but debt is 9e22
-        SafeERC20.safeApprove(address(alToken), address(transmuterLogic), amount);
+        // Update approval amount to match the actual debt being minted
+        SafeERC20.safeApprove(address(alToken), address(transmuterLogic), redemption);
         transmuterLogic.createRedemption(redemption);
         uint256 aliceId = 1;
         vm.stopPrank();
@@ -3654,7 +3665,8 @@ vaultSupply;
         vm.roll(block.number + 5_256_000);
 
         // Mimick bad debt
-        yieldToken.transfer(0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB, 5e17);
+        uint256 originalSupply = yieldToken.totalSupply();
+        stdstore.target(address(yieldToken)).sig("totalSupply()").checked_write(originalSupply + 5e17);
         // Check balances after claim
         uint256 alchemistYTBefore = yieldToken.balanceOf(address(alchemist));
         vm.startPrank(alice);
@@ -3729,7 +3741,7 @@ vaultSupply;
         uint256 initialVaultSupply = IERC20(address(yieldToken)).totalSupply();
         // increasing yeild token suppy by 59 bps or 5.9% while keeping the unederlying supply unchanged
         uint256 modifiedVaultSupply = (initialVaultSupply * 590 / 10_000) + initialVaultSupply;
-        deal(address(yieldToken), address(0xdead), initialVaultSupply * 590 / 10_000, true);
+        stdstore.target(address(yieldToken)).sig("totalSupply()").checked_write(modifiedVaultSupply);
         assertEq(IERC20(address(yieldToken)).totalSupply(), modifiedVaultSupply);
         // ensure initial debt is correct
         vm.assertApproxEqAbs(prevDebt, 180_000_000_000_000_000_018_000, minimumDepositOrWithdrawalLoss);
@@ -3796,7 +3808,7 @@ vaultSupply;
         uint256 initialVaultSupply = IERC20(address(yieldToken)).totalSupply();
         uint256 modifiedVaultSupply = initialVaultSupply - (initialVaultSupply * 590 / 10_000);
         // Decrease supply to increase price
-        deal(address(yieldToken), address(yieldToken), modifiedVaultSupply, true);
+        stdstore.target(address(yieldToken)).sig("totalSupply()").checked_write(modifiedVaultSupply);
         assertEq(IERC20(address(yieldToken)).totalSupply(), modifiedVaultSupply);
         // alice fully repays her debt
         alchemist.repay(debtAmount, tokenId);
@@ -3849,7 +3861,7 @@ vaultSupply;
         uint256 initialVaultSupply = IERC20(address(yieldToken)).totalSupply();
         // increasing yeild token suppy by 59 bps or 5.9% while keeping the unederlying supply unchanged
         uint256 modifiedVaultSupply = (initialVaultSupply * 590 / 10_000) + initialVaultSupply;
-        deal(address(yieldToken), address(0xdead), initialVaultSupply * 590 / 10_000, true);
+        stdstore.target(address(yieldToken)).sig("totalSupply()").checked_write(modifiedVaultSupply);
         ////////////////////////////////
         // liquidate tokenIdFor0xBeef //
         ////////////////////////////////
