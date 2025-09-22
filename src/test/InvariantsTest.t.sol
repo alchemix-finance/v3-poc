@@ -156,7 +156,6 @@ contract InvariantsTest is Test {
             minimumCollateralization: minimumCollateralization,
             collateralizationLowerBound: 1_052_631_578_950_000_000, // 1.05 collateralization
             globalMinimumCollateralization: 1_111_111_111_111_111_111, // 1.1
-            tokenAdapter: address(fakeYieldToken),
             transmuter: address(transmuterLogic),
             protocolFee: 0,
             protocolFeeReceiver: address(10),
