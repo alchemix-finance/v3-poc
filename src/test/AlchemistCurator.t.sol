@@ -50,7 +50,7 @@ contract AlchemistCuratorTest is Test {
     function testSetStrategy() public {
         vm.startPrank(operator);
         mytCuratorProxy.submitSetStrategy(address(mytStrategy), address(vault));
-        _vaultFastForward(abi.encodeCall(IVaultV2.setIsAdapter, (address(mytStrategy), true)));
+        _vaultFastForward(abi.encodeCall(IVaultV2.addAdapter, address(mytStrategy)));
         mytCuratorProxy.setStrategy(address(mytStrategy), address(vault));
         vm.stopPrank();
     }
@@ -282,7 +282,7 @@ contract AlchemistCuratorTest is Test {
     function _submitAndSetStrategy(address adapter, address myt) internal {
         vm.startPrank(operator);
         mytCuratorProxy.submitSetStrategy(adapter, myt);
-        _vaultFastForward(abi.encodeCall(IVaultV2.setIsAdapter, (adapter, true)));
+        _vaultFastForward(abi.encodeCall(IVaultV2.addAdapter, adapter));
         mytCuratorProxy.setStrategy(adapter, myt);
         vm.stopPrank();
     }

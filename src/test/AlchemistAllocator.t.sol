@@ -48,8 +48,8 @@ contract AlchemistAllocatorTest is Test {
         vm.startPrank(curator);
         _vaultSubmitAndFastForward(abi.encodeCall(IVaultV2.setIsAllocator, (address(allocator), true)));
         vault.setIsAllocator(address(allocator), true);
-        _vaultSubmitAndFastForward(abi.encodeCall(IVaultV2.setIsAdapter, (address(mytStrategy), true)));
-        vault.setIsAdapter(address(mytStrategy), true);
+        _vaultSubmitAndFastForward(abi.encodeCall(IVaultV2.addAdapter, address(mytStrategy)));
+        vault.addAdapter(address(mytStrategy));
         // bytes memory idData = abi.encode("MockTokenProtocol", address(mytStrategy));
         bytes memory idData = mytStrategy.getIdData();
         _vaultSubmitAndFastForward(abi.encodeCall(IVaultV2.increaseAbsoluteCap, (idData, defaultStrategyAbsoluteCap)));
