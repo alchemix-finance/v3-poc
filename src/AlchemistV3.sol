@@ -668,7 +668,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         uint8 decimals = TokenUtils.expectDecimals(yieldToken);
         uint256 vaultSupply = IERC20(yieldToken).totalSupply();
         if (vaultSupply == 0) return amount;
-        ret = (amount * (1e19 * TokenUtils.safeBalanceOf(underlyingToken, yieldToken)) / vaultSupply) / 1e18;
+        ret = (amount * (1e18 * TokenUtils.safeBalanceOf(underlyingToken, yieldToken)) / vaultSupply) / 1e18;
         console.log("ret");
     }
 
@@ -677,7 +677,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         uint8 decimals = TokenUtils.expectDecimals(yieldToken);
         uint256 vaultSupply = IERC20(yieldToken).totalSupply();
         if (vaultSupply == 0) return amount;
-        ret = amount * 1e18 / ((1e19 * TokenUtils.safeBalanceOf(underlyingToken, yieldToken)) / vaultSupply);
+        ret = amount * 1e18 / ((1e18 * TokenUtils.safeBalanceOf(underlyingToken, yieldToken)) / vaultSupply);
     }
 
     /// @inheritdoc IAlchemistV3State
@@ -777,10 +777,10 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         if (account.debt == 0) {
             return (0, 0, 0);
         }
-
-        uint256 price = IVaultV2(yieldToken).convertToAssets(10**IVaultV2(yieldToken).decimals());
+        uint256 vaultSupply = IVaultV2(yieldToken).totalSupply();
+        if (vaultSupply == 0 ) return (0,0,0);
+        uint256 price = 1e18 * TokenUtils.safeBalanceOf(underlyingToken, yieldToken) / vaultSupply;
         if (price == 0) {
-            console.log("NO PRICE?");
             return (0, 0, 0);
         }
 

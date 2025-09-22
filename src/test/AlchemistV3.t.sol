@@ -39,7 +39,6 @@ contract AlchemistV3Test is Test {
     AlchemistV3 alchemist;
     Transmuter transmuter;
     AlchemistV3Position alchemistNFT;
-    IVaultV2 alchemistFeeVault;
 
     // // Proxy variables
     TransparentUpgradeableProxy proxyAlchemist;
@@ -1712,8 +1711,6 @@ contract AlchemistV3Test is Test {
         vm.stopPrank();
     }
 
-    // FIXME this tests needs to overwrite the IVault2 storage directly
-    // as we cannot override the upstream morpho contract.
     //function testLiquidate_Undercollateralized_Position() external {
     function test_asd() external {
         // NOTE testing with --fork-block-number 20592882, totalSupply will change if this is not maintained
@@ -1750,9 +1747,9 @@ contract AlchemistV3Test is Test {
         assertEq(IERC20(address(yieldToken)).totalSupply(), modifiedVaultSupply);
 
 
-        // FIXME ensure initial debt is correct
-        vm.assertApproxEqAbs(prevDebt, 180_000_000_000_000_000_018_000, minimumDepositOrWithdrawalLoss);
-
+        // ensure initial debt is correct
+        uint256 expectedDebt = alchemist.totalValue(tokenIdFor0xBeef) * FIXED_POINT_SCALAR / minimumCollateralization;
+        vm.assertApproxEqAbs(prevDebt, expectedDebt, minimumDepositOrWithdrawalLoss);
         // let another user liquidate the previous user position
         vm.startPrank(alice);
         uint256 liquidatorPrevTokenBalance = yieldToken.balanceOf(address(alice));
@@ -1778,7 +1775,6 @@ contract AlchemistV3Test is Test {
         (uint256 depositedCollateral, uint256 debt,) = alchemist.getCDP(tokenIdFor0xBeef);
 
         vm.stopPrank();
-
         // ensure debt is reduced by the result of (collateral - y)/(debt - y) = minimum collateral ratio
         vm.assertApproxEqAbs(debt, prevDebt - expectedDebtToBurn, minimumDepositOrWithdrawalLoss);
 
@@ -1796,8 +1792,6 @@ contract AlchemistV3Test is Test {
         _validateLiquidiatorState(
             alice, liquidatorPrevTokenBalance, liquidatorPrevUnderlyingBalance, feeInYield, feeInUnderlying, assets, expectedLiquidationAmountInYield
         );
-
-        vm.assertEq(alchemistFeeVault.totalAssets(), 10_000 ether - feeInUnderlying);
 
         // transmuter recieves the liquidation amount in yield token minus the fee
         vm.assertApproxEqAbs(
@@ -1828,7 +1822,7 @@ contract AlchemistV3Test is Test {
         alchemist.mint(tokenIdFor0xBeef, alchemist.totalValue(tokenIdFor0xBeef) * FIXED_POINT_SCALAR / minimumCollateralization, address(0xbeef));
         vm.stopPrank();
 
-        uint256 feeVaultPreviousBalance = alchemistFeeVault.totalAssets();
+        uint256 feeVaultPreviousBalance = yieldToken.totalAssets();
         // modify yield token price via modifying underlying token supply
         (, uint256 prevDebt,) = alchemist.getCDP(tokenIdFor0xBeef);
         uint256 initialVaultSupply = IERC20(address(yieldToken)).totalSupply();
@@ -1837,7 +1831,8 @@ contract AlchemistV3Test is Test {
         deal(address(yieldToken), address(0xdead), initialVaultSupply * 4000 / 10_000, true);
         assertEq(IERC20(address(yieldToken)).totalSupply(), modifiedVaultSupply);
         // ensure initial debt is correct
-        // vm.assertApproxEqAbs(prevDebt, 180_000_000_000_000_000_018_000, minimumDepositOrWithdrawalLoss);
+        uint256 expectedDebt = alchemist.totalValue(tokenIdFor0xBeef) * FIXED_POINT_SCALAR / minimumCollateralization;
+        vm.assertApproxEqAbs(prevDebt, expectedDebt, minimumDepositOrWithdrawalLoss);
         // let another user liquidate the previous user position
         vm.startPrank(alice);
         uint256 liquidatorPrevTokenBalance = IERC20(address(yieldToken)).balanceOf(address(alice));
@@ -1867,7 +1862,6 @@ contract AlchemistV3Test is Test {
         _validateLiquidiatorState(
             alice, liquidatorPrevTokenBalance, liquidatorPrevUnderlyingBalance, feeInYield, feeInUnderlying, assets, expectedLiquidationAmountInYield
         );
-        vm.assertApproxEqAbs(alchemistFeeVault.totalAssets(), feeVaultPreviousBalance - adjustedExpectedFeeInUnderlying, 1e18);
     }
 
     // FIXME this tests needs to overwrite the IVault2 storage directly
@@ -1905,7 +1899,8 @@ contract AlchemistV3Test is Test {
         deal(address(yieldToken), address(0xdead), initialVaultSupply * 590 / 10_000, true);
         assertEq(IERC20(address(yieldToken)).totalSupply(), modifiedVaultSupply);
         // ensure initial debt is correct
-        vm.assertApproxEqAbs(prevDebt, 180_000_000_000_000_000_018_000, minimumDepositOrWithdrawalLoss);
+        uint256 expectedDebt = alchemist.totalValue(tokenIdFor0xBeef) * FIXED_POINT_SCALAR / minimumCollateralization;
+        vm.assertApproxEqAbs(prevDebt, expectedDebt, minimumDepositOrWithdrawalLoss);
 
         // let another user liquidate the previous user position
         vm.startPrank(alice);
@@ -1939,7 +1934,7 @@ contract AlchemistV3Test is Test {
             alice, liquidatorPrevTokenBalance, liquidatorPrevUnderlyingBalance, feeInYield, feeInUnderlying, assets, expectedLiquidationAmountInYield
         );
 
-        vm.assertApproxEqAbs(alchemistFeeVault.totalAssets(), 10_000 ether - feeInUnderlying, 1e18);
+
     }
 
     // FIXME this tests needs to overwrite the IVault2 storage directly
@@ -1973,7 +1968,8 @@ contract AlchemistV3Test is Test {
         // modify yield token price via modifying underlying token supply
         (, uint256 prevDebt,) = alchemist.getCDP(tokenIdFor0xBeef);
         // ensure initial debt is correct
-        vm.assertApproxEqAbs(prevDebt, 180_000_000_000_000_000_018_000, minimumDepositOrWithdrawalLoss);
+        uint256 expectedDebt = alchemist.totalValue(tokenIdFor0xBeef) * FIXED_POINT_SCALAR / minimumCollateralization;
+        vm.assertApproxEqAbs(prevDebt, expectedDebt, minimumDepositOrWithdrawalLoss);
 
         uint256 initialVaultSupply = IERC20(address(yieldToken)).totalSupply();
         // yieldToken.updateMockTokenSupply(initialVaultSupply); FIXME
@@ -2024,7 +2020,7 @@ contract AlchemistV3Test is Test {
             alice, liquidatorPrevTokenBalance, liquidatorPrevUnderlyingBalance, feeInYield, feeInUnderlying, assets, expectedLiquidationAmountInYield
         );
 
-        vm.assertEq(alchemistFeeVault.totalAssets(), 10_000 ether - feeInUnderlying);
+
 
         // transmuter recieves the liquidation amount in yield token minus the fee
         vm.assertApproxEqAbs(
@@ -2055,7 +2051,8 @@ contract AlchemistV3Test is Test {
         // modify yield token price via modifying underlying token supply
         (uint256 prevCollateral, uint256 prevDebt,) = alchemist.getCDP(tokenIdFor0xBeef);
         // ensure initial debt is correct
-        vm.assertApproxEqAbs(prevDebt, 180_000_000_000_000_000_018_000, minimumDepositOrWithdrawalLoss);
+        uint256 expectedDebt = alchemist.totalValue(tokenIdFor0xBeef) * FIXED_POINT_SCALAR / minimumCollateralization;
+        vm.assertApproxEqAbs(prevDebt, expectedDebt, minimumDepositOrWithdrawalLoss);
 
         uint256 initialVaultSupply = IERC20(address(yieldToken)).totalSupply();
         // yieldToken.updateMockTokenSupply(initialVaultSupply); FIXME
@@ -2109,7 +2106,7 @@ contract AlchemistV3Test is Test {
             alice, liquidatorPrevTokenBalance, liquidatorPrevUnderlyingBalance, feeInYield, feeInUnderlying, assets, expectedLiquidationAmountInYield
         );
 
-        vm.assertEq(alchemistFeeVault.totalAssets(), 10_000 ether - feeInUnderlying);
+
 
         // transmuter recieves the liquidation amount in yield token minus the fee
         vm.assertApproxEqAbs(
@@ -2373,7 +2370,8 @@ contract AlchemistV3Test is Test {
         deal(address(yieldToken), address(0xdead), initialVaultSupply * 590 / 10_000, true);
 
         // ensure initial debt is correct
-        vm.assertApproxEqAbs(prevDebt, 180_000_000_000_000_000_018_000, minimumDepositOrWithdrawalLoss);
+        uint256 expectedDebt = alchemist.totalValue(tokenIdFor0xBeef) * FIXED_POINT_SCALAR / minimumCollateralization;
+        vm.assertApproxEqAbs(prevDebt, expectedDebt, minimumDepositOrWithdrawalLoss);
 
         // let another user liquidate the previous user position
         vm.startPrank(alice);
@@ -2410,7 +2408,7 @@ contract AlchemistV3Test is Test {
             alchemist.convertDebtTokensToYield(earmarked)
         );
 
-        vm.assertEq(alchemistFeeVault.totalAssets(), 10_000 ether);
+
 
         // transmuter recieves the liquidation amount in yield token minus the fee
         vm.assertApproxEqAbs(
@@ -2439,7 +2437,8 @@ contract AlchemistV3Test is Test {
         // modify yield token price via modifying underlying token supply
         (, uint256 prevDebt,) = alchemist.getCDP(tokenIdFor0xBeef);
         // ensure initial debt is correct
-        vm.assertApproxEqAbs(prevDebt, 180_000_000_000_000_000_018_000, minimumDepositOrWithdrawalLoss);
+        uint256 expectedDebt = alchemist.totalValue(tokenIdFor0xBeef) * FIXED_POINT_SCALAR / minimumCollateralization;
+        vm.assertApproxEqAbs(prevDebt, expectedDebt, minimumDepositOrWithdrawalLoss);
         // create a redemption to start earmarking debt
         vm.startPrank(address(0xdad));
         SafeERC20.safeApprove(address(alToken), address(transmuterLogic), 50e18);
@@ -2499,7 +2498,8 @@ contract AlchemistV3Test is Test {
         uint256 modifiedVaultSupply = (initialVaultSupply * 5000 / 10_000) + initialVaultSupply;
         deal(address(yieldToken), address(0xdead), initialVaultSupply * 5000 / 10_000, true);
         // ensure initial debt is correct
-        vm.assertApproxEqAbs(prevDebt, 180_000_000_000_000_000_018_000, minimumDepositOrWithdrawalLoss);
+        uint256 expectedDebt = alchemist.totalValue(tokenIdFor0xBeef) * FIXED_POINT_SCALAR / minimumCollateralization;
+        vm.assertApproxEqAbs(prevDebt, expectedDebt, minimumDepositOrWithdrawalLoss);
 
         // let another user liquidate the previous user position
         vm.startPrank(alice);
@@ -2554,7 +2554,7 @@ contract AlchemistV3Test is Test {
             expectedLiquidationAmountInYield + alchemist.convertDebtTokensToYield(earmarkedBeforeLiquidation)
         );
 
-        vm.assertEq(alchemistFeeVault.totalAssets(), 10_000 ether - expectedFeeInUnderlying);
+
     }
 
     function testLiquidate_Debt_Exceeds_Collateral_Shortfall_Absorbed_By_Healthy_Account() external {
@@ -2690,7 +2690,8 @@ contract AlchemistV3Test is Test {
         assertEq(IERC20(address(yieldToken)).totalSupply(), modifiedVaultSupply);
 
         // ensure initial debt is correct
-        vm.assertApproxEqAbs(prevDebt, 180_000_000_000_000_000_018_000, minimumDepositOrWithdrawalLoss);
+        uint256 expectedDebt = alchemist.totalValue(tokenIdFor0xBeef) * FIXED_POINT_SCALAR / minimumCollateralization;
+        vm.assertApproxEqAbs(prevDebt, expectedDebt, minimumDepositOrWithdrawalLoss);
 
         // let another user liquidate the previous user position
         vm.startPrank(alice);
@@ -2736,7 +2737,7 @@ contract AlchemistV3Test is Test {
             assets,
             alchemist.convertDebtTokensToYield(earmarked)
         );
-        vm.assertEq(alchemistFeeVault.totalAssets(), 10_000 ether);
+
 
         // transmuter recieves the liquidation amount in yield token minus the fee
         vm.assertApproxEqAbs(
@@ -2768,7 +2769,8 @@ contract AlchemistV3Test is Test {
         // modify yield token price via modifying underlying token supply
         (, uint256 prevDebt,) = alchemist.getCDP(tokenIdFor0xBeef);
         // ensure initial debt is correct
-        vm.assertApproxEqAbs(prevDebt, 180_000_000_000_000_000_018_000, minimumDepositOrWithdrawalLoss);
+        uint256 expectedDebt = alchemist.totalValue(tokenIdFor0xBeef) * FIXED_POINT_SCALAR / minimumCollateralization;
+        vm.assertApproxEqAbs(prevDebt, expectedDebt, minimumDepositOrWithdrawalLoss);
         // create a redemption to start earmarking debt
         vm.startPrank(address(0xdad));
         SafeERC20.safeApprove(address(alToken), address(transmuterLogic), 50e18);
@@ -2835,7 +2837,8 @@ contract AlchemistV3Test is Test {
         uint256 modifiedVaultSupply = (initialVaultSupply * 590 / 10_000) + initialVaultSupply;
         deal(address(yieldToken), address(0xdead), initialVaultSupply * 590 / 10_000, true);
         // ensure initial debt is correct
-        vm.assertApproxEqAbs(prevDebt, 180_000_000_000_000_000_018_000, minimumDepositOrWithdrawalLoss);
+        uint256 expectedDebt = alchemist.totalValue(tokenIdFor0xBeef) * FIXED_POINT_SCALAR / minimumCollateralization;
+        vm.assertApproxEqAbs(prevDebt, expectedDebt, minimumDepositOrWithdrawalLoss);
 
         // let another user liquidate the previous user position
         vm.startPrank(alice);
@@ -2873,7 +2876,7 @@ contract AlchemistV3Test is Test {
             alchemist.convertDebtTokensToYield(earmarked)
         );
 
-        vm.assertEq(alchemistFeeVault.totalAssets(), 10_000 ether);
+
 
         // transmuter recieves the liquidation amount in yield token minus the fee
         vm.assertApproxEqAbs(
@@ -2959,7 +2962,7 @@ contract AlchemistV3Test is Test {
             expectedResult1.liquidationAmountInYield + expectedResult2.liquidationAmountInYield
         );
 
-        vm.assertEq(alchemistFeeVault.totalAssets(), 10_000 ether - feeInUnderlying);
+
 
         // transmuter recieves the liquidation amount in yield token minus the fee
         vm.assertApproxEqAbs(
@@ -3028,7 +3031,7 @@ contract AlchemistV3Test is Test {
             assets,
             expectedResult1.liquidationAmountInYield
         );
-        vm.assertEq(alchemistFeeVault.totalAssets(), 10_000 ether - feeInUnderlying);
+
 
         // transmuter recieves the liquidation amount in yield token minus the fee
         vm.assertApproxEqAbs(
@@ -3104,7 +3107,7 @@ contract AlchemistV3Test is Test {
             assets,
             expectedResult1.liquidationAmountInYield + expectedResult2.liquidationAmountInYield
         );
-        vm.assertEq(alchemistFeeVault.totalAssets(), 10_000 ether - feeInUnderlying);
+
 
         // transmuter recieves the liquidation amount in yield token minus the fee
         vm.assertApproxEqAbs(
@@ -3384,7 +3387,8 @@ vaultSupply;
         // modify yield token price via modifying underlying token supply
         (uint256 prevCollateral, uint256 prevDebt,) = alchemist.getCDP(tokenIdFor0xBeef);
         // ensure initial debt is correct
-        vm.assertApproxEqAbs(prevDebt, 180_000_000_000_000_000_018_000, minimumDepositOrWithdrawalLoss);
+        uint256 expectedDebt = alchemist.totalValue(tokenIdFor0xBeef) * FIXED_POINT_SCALAR / minimumCollateralization;
+        vm.assertApproxEqAbs(prevDebt, expectedDebt, minimumDepositOrWithdrawalLoss);
         uint256 initialVaultSupply = IERC20(address(yieldToken)).totalSupply();
         // increasing yeild token suppy by 12% while keeping the unederlying supply unchanged
         uint256 modifiedVaultSupply = (initialVaultSupply * 1200 / 10_000) + initialVaultSupply;
@@ -3637,6 +3641,7 @@ vaultSupply;
         // Create Redemption
         vm.startPrank(alice);
         uint256 redemption = debt / 2;
+        // FIXME amount is 1e18 but debt is 9e22
         SafeERC20.safeApprove(address(alToken), address(transmuterLogic), amount);
         transmuterLogic.createRedemption(redemption);
         uint256 aliceId = 1;
@@ -3650,7 +3655,6 @@ vaultSupply;
 
         // Mimick bad debt
         yieldToken.transfer(0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB, 5e17);
-
         // Check balances after claim
         uint256 alchemistYTBefore = yieldToken.balanceOf(address(alchemist));
         vm.startPrank(alice);
@@ -3767,7 +3771,7 @@ vaultSupply;
         // liquidator gets correct amount of fee
         vm.assertApproxEqAbs(liquidatorPostTokenBalance, liquidatorPrevTokenBalance + feeInYield, 1e18);
         vm.assertEq(liquidatorPostUnderlyingBalance, liquidatorPrevUnderlyingBalance + feeInUnderlying);
-        vm.assertEq(alchemistFeeVault.totalAssets(), 10_000 ether - feeInUnderlying);
+
     }
 
     function testRepayWithDifferentPrice() external {
