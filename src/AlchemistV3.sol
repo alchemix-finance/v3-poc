@@ -138,6 +138,11 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     /// This is used to differentiate between tokens deposited into a CDP and balance of the contract
     uint256 private _yieldTokensDeposited;
 
+    // Weights at the time last epoch was created
+    uint256 private _epochBaseRedemptionWeight;
+    uint256 private _epochBaseEarmarkWeight;
+    uint256 private _epochBaseNormalizedEarmarkWeight;
+
     /// @dev User accounts
     mapping(uint256 => Account) private _accounts;
 
@@ -600,7 +605,12 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         // This underpricing leads to the transmuter requesting more tokens than the alchemist has earmarked in some cases
         _redemptionWeight += PositionDecay.WeightIncrement(amount > cumulativeEarmarked ? cumulativeEarmarked : amount, cumulativeEarmarked);
 
-        console2.log(_redemptionWeight);
+        // Set epoch when remaining earmark is fully cleared
+        if (amount >= cumulativeEarmarked && cumulativeEarmarked != 0) {
+            _epochBaseRedemptionWeight        = _redemptionWeight;
+            _epochBaseEarmarkWeight           = _earmarkWeight;
+            _epochBaseNormalizedEarmarkWeight = _normalizedEarmarkWeight;
+        }
 
         // Calculate current fee price
         uint256 collRedeemed = convertDebtTokensToYield(amount);
@@ -610,7 +620,6 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         // Update weights and totals
         uint256 old = _totalLocked;
         _totalLocked = totalOut > old ? 0 : old - totalOut;
-        // Same rounding behavior as above
         _collateralWeight += PositionDecay.WeightIncrement(totalOut > old ? old : totalOut, old);
         cumulativeEarmarked -= amount;
         totalDebt -= amount;
@@ -1026,31 +1035,57 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
         uint256 collateralToRemove = PositionDecay.ScaleByWeightDelta(account.rawLocked, _collateralWeight - account.lastCollateralWeight);
 
-        uint256 survivalOld = PositionDecay.SurvivalFromWeight(account.lastAccruedRedemptionWeight);
-        uint256 survivalNew = PositionDecay.SurvivalFromWeight(_redemptionWeight);
-        uint256 exposure = account.debt > account.earmarked ? account.debt - account.earmarked : 0;
+        // Clear past epochs
+        if (account.lastAccruedRedemptionWeight < _epochBaseRedemptionWeight) {
+            // Global survival to compute pre-epoch earmark present at last accrual
+            uint256 globalSurvival = PositionDecay.SurvivalFromWeight(account.lastAccruedRedemptionWeight);
+            uint256 earmarkGlobal = (account.accumulator * globalSurvival) >> 128;
+
+            // The user's share of raw earmark added up to the current epoch
+            uint256 exposureOld = account.debt > account.earmarked ? (account.debt - account.earmarked) : 0;
+            uint256 deltaRawOld = PositionDecay.ScaleByWeightDelta(exposureOld, _epochBaseEarmarkWeight - account.lastAccruedEarmarkWeight);
+
+            // Everything pre-epoch is fully redeemed at the hard boundary
+            uint256 redeemedOld = earmarkGlobal + deltaRawOld;
+            if (redeemedOld > account.debt) redeemedOld = account.debt;
+            account.debt -= redeemedOld;
+
+            // Reset account state to the epoch base
+            account.accumulator = 0;
+            account.earmarked = 0;
+            account.lastAccruedEarmarkWeight = _epochBaseEarmarkWeight;
+            account.lastAccruedNormalizedEarmarkWeight = _epochBaseNormalizedEarmarkWeight;
+            account.lastAccruedRedemptionWeight = _epochBaseRedemptionWeight;
+        }
+
+        // Current epoch accrual
+        uint256 survivalOld = PositionDecay.SurvivalFromWeight(account.lastAccruedRedemptionWeight - _epochBaseRedemptionWeight);
+        uint256 survivalNew = PositionDecay.SurvivalFromWeight(_redemptionWeight - _epochBaseRedemptionWeight);
+
+        uint256 exposure = account.debt > account.earmarked ? (account.debt - account.earmarked) : 0;
         uint256 deltaRaw = PositionDecay.ScaleByWeightDelta(exposure, _earmarkWeight - account.lastAccruedEarmarkWeight);
         uint256 deltaA = PositionDecay.ScaleByWeightDelta(exposure, _normalizedEarmarkWeight - account.lastAccruedNormalizedEarmarkWeight);
-        uint256 accumulatorOld = account.accumulator;
-        uint256 earmarkOld = (accumulatorOld * survivalOld) >> 128;
-        uint256 accumulatorNew = accumulatorOld + deltaA;
-        uint256 earmarkNow = (accumulatorNew * survivalNew) >> 128;
-        uint256 redeemed = (earmarkOld + deltaRaw >= earmarkNow)
-            ? (earmarkOld + deltaRaw - earmarkNow)
-            : 0;
 
-        // Update account state
-        account.accumulator = accumulatorNew;
-        account.earmarked = earmarkNow;
-        account.debt = account.debt >= redeemed ? account.debt - redeemed : 0;
+        uint256 earmarkOld = (account.accumulator * survivalOld) >> 128;
+        uint256 accNew = account.accumulator + deltaA;
+        uint256 earmarkNew = (accNew * survivalNew) >> 128;
+
+        uint256 redeemed = (earmarkOld + deltaRaw >= earmarkNew) ? (earmarkOld + deltaRaw - earmarkNew) : 0;
+        if (redeemed > account.debt) redeemed = account.debt;
+
+        // Apply updates
+        account.accumulator = accNew;
+        account.earmarked = earmarkNew;
+        account.debt -= redeemed;
+
         account.collateralBalance -= collateralToRemove;
         account.rawLocked = convertDebtTokensToYield(account.debt) * minimumCollateralization / FIXED_POINT_SCALAR;
 
-        // Update last account weights
+        // Store current weights to account state
         account.lastCollateralWeight = _collateralWeight;
-        account.lastAccruedEarmarkWeight            = _earmarkWeight;
+        account.lastAccruedEarmarkWeight = _earmarkWeight;
         account.lastAccruedNormalizedEarmarkWeight  = _normalizedEarmarkWeight;
-        account.lastAccruedRedemptionWeight         = _redemptionWeight;
+        account.lastAccruedRedemptionWeight = _redemptionWeight;
     }
 
     /// @dev Earmarks the debt for redemption.
@@ -1058,15 +1093,12 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         if (totalDebt == 0) return;
         if (block.number <= lastEarmarkBlock) return;
 
-        // Yield the transmuter accumulated since last earmark (cover)
+        // Yield the transmuter accumulated since last earmark
         uint256 transmuterCurrentBalance = TokenUtils.safeBalanceOf(yieldToken, address(transmuter));
-        uint256 transmuterDifference = transmuterCurrentBalance > lastTransmuterTokenBalance
-            ? transmuterCurrentBalance - lastTransmuterTokenBalance
-            : 0;
+        uint256 transmuterDifference = transmuterCurrentBalance > lastTransmuterTokenBalance ? transmuterCurrentBalance - lastTransmuterTokenBalance : 0;
 
+        // Adjust for this yield
         uint256 amount = ITransmuter(transmuter).queryGraph(lastEarmarkBlock + 1, block.number);
-
-        // Proper saturating subtract in DEBT units
         uint256 coverInDebt = convertYieldTokensToDebt(transmuterDifference);
         amount = amount > coverInDebt ? amount - coverInDebt : 0;
 
@@ -1075,19 +1107,18 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         if (amount > 0 && liveUnearmarked != 0) {
             _earmarkWeight += PositionDecay.WeightIncrement(amount, liveUnearmarked);
 
-            uint256 survival = PositionDecay.SurvivalFromWeight(_redemptionWeight);
+            // Current epoch survival
+            uint256 survival = PositionDecay.SurvivalFromWeight(_redemptionWeight - _epochBaseRedemptionWeight);
             if (survival > 0) {
-                // ΔN = ΔE / survival   (keep units in the same "plain" debt units)
+                // ΔN = ΔE / survival
                 uint256 deltaN = (amount << 128) / survival;
-
-                // If survival is very small deltaN may be larger than liveUnearmarked in rare cases so we clamp
                 if (deltaN > liveUnearmarked) deltaN = liveUnearmarked;
                 
                 _normalizedEarmarkWeight += PositionDecay.WeightIncrement(deltaN, liveUnearmarked);
             }
+
             cumulativeEarmarked += amount;
         }
-
 
         lastEarmarkBlock = block.number;
     }
@@ -1097,9 +1128,9 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     function _decreaseEarmark(Account storage account, uint256 amountDebt) internal {
         if (amountDebt == 0) return;
 
-        uint256 survival = PositionDecay.SurvivalFromWeight(_redemptionWeight);
+        // Current epoch survival
+        uint256 survival = PositionDecay.SurvivalFromWeight(_redemptionWeight - _epochBaseRedemptionWeight);
         if (survival == 0) {
-            // If survival underflowed to 0, all earmark has effectively decayed.
             account.accumulator = 0;
             account.earmarked = 0;
             return;
@@ -1108,38 +1139,27 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         // To reduce earmark by ΔE in plain debt units,
         // reduce accumulator by ΔA = (ΔE << 128) / survival.
         uint256 deltaA = (amountDebt << 128) / survival;
-
         uint256 acc = account.accumulator;
         account.accumulator = deltaA > acc ? 0 : acc - deltaA;
-
-        // Keep the cached field coherent for any direct reads in this block.
         account.earmarked = (account.accumulator * survival) >> 128;
     }
 
-    /// @dev Gets the amount of debt that the account owned by `owner` will have after a sync occurs.
-    ///
-    /// @param tokenId The id of the account owner.
-    ///
-    /// @return The amount of debt that the account owned by `owner` will have after an update.
-    /// @return The amount of debt which is currently earmarked fro redemption.
-    /// @return The amount of collateral that has yet to be redeemed.
     function _calculateUnrealizedDebt(uint256 tokenId) internal view returns (uint256, uint256, uint256) {
         Account storage account = _accounts[tokenId];
 
+        // Copies used to simulate a sync() call
         uint256 earmarkWeightCopy = _earmarkWeight;
-        uint256 normalizedEarmarkWeightCopy = _normalizedEarmarkWeight;
+        uint256 normalizedWeightCopy = _normalizedEarmarkWeight;
+        uint256 redemptionWeightCopy = _redemptionWeight;
 
-        // Simulate earmark unless there has been an earmark this block
+        // Simulate sync()
         if (block.number > lastEarmarkBlock) {
-            // Yield the transmuter accumulated since last earmark (cover)
+            // Yield the transmuter accumulated since last earmark
             uint256 transmuterCurrentBalance = TokenUtils.safeBalanceOf(yieldToken, address(transmuter));
-            uint256 transmuterDifference = transmuterCurrentBalance > lastTransmuterTokenBalance
-                ? transmuterCurrentBalance - lastTransmuterTokenBalance
-                : 0;
-
+            uint256 transmuterDifference = transmuterCurrentBalance > lastTransmuterTokenBalance ? transmuterCurrentBalance - lastTransmuterTokenBalance : 0;
             uint256 amount = ITransmuter(transmuter).queryGraph(lastEarmarkBlock + 1, block.number);
 
-            // Proper saturating subtract in DEBT units
+            // Adjust for the earned yield
             uint256 coverInDebt = convertYieldTokensToDebt(transmuterDifference);
             amount = amount > coverInDebt ? amount - coverInDebt : 0;
 
@@ -1148,50 +1168,69 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
             if (amount > 0 && liveUnearmarked != 0) {
                 earmarkWeightCopy += PositionDecay.WeightIncrement(amount, liveUnearmarked);
 
-                uint256 survival = PositionDecay.SurvivalFromWeight(_redemptionWeight);
-                if (survival > 0) {
-                    // ΔN = ΔE / survival   (keep units in the same "plain" debt units)
-                    uint256 deltaN = (amount << 128) / survival;
-
-                    // If survival is very small deltaN may be larger than liveUnearmarked in rare cases so we clamp
+                // Survival of current epoch
+                uint256 sEpoch = PositionDecay.SurvivalFromWeight(redemptionWeightCopy - _epochBaseRedemptionWeight);
+                if (sEpoch > 0) {
+                    // ΔN = ΔE / sEpoch
+                    uint256 deltaN = (amount << 128) / sEpoch;
                     if (deltaN > liveUnearmarked) deltaN = liveUnearmarked;
-                    
-                    normalizedEarmarkWeightCopy += PositionDecay.WeightIncrement(deltaN, liveUnearmarked);
+
+                    normalizedWeightCopy += PositionDecay.WeightIncrement(deltaN, liveUnearmarked);
                 }
             }
         }
 
+        // Collateral removal from fees and redemptions
         uint256 collateralToRemove = PositionDecay.ScaleByWeightDelta(account.rawLocked, _collateralWeight - account.lastCollateralWeight);
 
-        uint256 survivalOld = PositionDecay.SurvivalFromWeight(account.lastAccruedRedemptionWeight);
-        uint256 survivalNew = PositionDecay.SurvivalFromWeight(_redemptionWeight);
-        uint256 exposure = account.debt > account.earmarked ? account.debt - account.earmarked : 0;
-        uint256 deltaRaw = PositionDecay.ScaleByWeightDelta(exposure, earmarkWeightCopy - account.lastAccruedEarmarkWeight);
-        uint256 deltaA = PositionDecay.ScaleByWeightDelta(exposure, normalizedEarmarkWeightCopy - account.lastAccruedNormalizedEarmarkWeight);
-        uint256 accumulatorOld = account.accumulator;
-        uint256 earmarkOld = (accumulatorOld * survivalOld) >> 128;
-        uint256 accumulatorNew = accumulatorOld + deltaA;
-        uint256 earmarkNow = (accumulatorNew * survivalNew) >> 128;
-        uint256 redeemed = (earmarkOld + deltaRaw >= earmarkNow)
-            ? (earmarkOld + deltaRaw - earmarkNow)
-            : 0;
+        // Account state copies
+        uint256 debtCopy = account.debt;
+        uint256 accCopy = account.accumulator;
+        uint256 earmarkedCopy = account.earmarked;
+        uint256 lastEarmarkWeight = account.lastAccruedEarmarkWeight;
+        uint256 lastNormalizedWeight = account.lastAccruedNormalizedEarmarkWeight;
+        uint256 lastRedemptionWeight = account.lastAccruedRedemptionWeight;
 
-        console2.log(_redemptionWeight);
-        console2.logUint(uint(survivalOld));
-        console2.logUint(uint(survivalNew));
-        console2.logUint(uint(exposure));
-        console2.logUint(uint(deltaRaw));
-        console2.logUint(uint(deltaA));
-        console2.logUint(uint(accumulatorOld));
-        console2.logUint(uint(accumulatorNew));
-        console2.logUint(uint(earmarkNow));
-        console2.logUint(uint(redeemed));
+        // Clear past epochs
+        if (lastRedemptionWeight < _epochBaseRedemptionWeight) {
+            // Global survival
+            uint256 globalSurvival = PositionDecay.SurvivalFromWeight(lastRedemptionWeight);
 
-        return (
-            account.debt >= redeemed ? account.debt - redeemed : 0,
-            earmarkNow,
-            account.collateralBalance - collateralToRemove
-        );
+            // Earmark present at last accrual
+            uint256 earmarkGlobal = (accCopy * globalSurvival) >> 128;
+
+            // The user's share of raw earmark added up to the current epoch
+            uint256 exposureOld = debtCopy > earmarkedCopy ? (debtCopy - earmarkedCopy) : 0;
+            uint256 deltaRawOld = PositionDecay.ScaleByWeightDelta(exposureOld, _epochBaseEarmarkWeight - lastEarmarkWeight);
+
+            // Everything pre-epoch is fully redeemed at the hard boundary
+            uint256 redeemedOld = earmarkGlobal + deltaRawOld;
+            if (redeemedOld > debtCopy) redeemedOld = debtCopy;
+            debtCopy -= redeemedOld;
+
+            // Reset account state to current epoch
+            accCopy = 0;
+            earmarkedCopy = 0;
+            lastEarmarkWeight = _epochBaseEarmarkWeight;
+            lastNormalizedWeight = _epochBaseNormalizedEarmarkWeight;
+            lastRedemptionWeight = _epochBaseRedemptionWeight;
+        }
+
+        // Current epoch calculations using remainder
+        uint256 sOld = PositionDecay.SurvivalFromWeight(lastRedemptionWeight - _epochBaseRedemptionWeight);
+        uint256 sNew = PositionDecay.SurvivalFromWeight(redemptionWeightCopy   - _epochBaseRedemptionWeight);
+
+        uint256 exposure = debtCopy > earmarkedCopy ? (debtCopy - earmarkedCopy) : 0;
+        uint256 deltaRaw = PositionDecay.ScaleByWeightDelta(exposure, earmarkWeightCopy - lastEarmarkWeight);
+        uint256 deltaA = PositionDecay.ScaleByWeightDelta(exposure, normalizedWeightCopy - lastNormalizedWeight);
+
+        uint256 earmarkOld = (accCopy * sOld) >> 128;
+        uint256 accNew = accCopy + deltaA;
+        uint256 earmarkNew = (accNew * sNew) >> 128;
+
+        uint256 redeemed = (earmarkOld + deltaRaw >= earmarkNew) ? (earmarkOld + deltaRaw - earmarkNew) : 0;
+
+        return (redeemed > debtCopy ? 0 : (debtCopy - redeemed), earmarkNew, account.collateralBalance - collateralToRemove);
     }
 
     /// @dev Checks that the account owned by `tokenId` is properly collateralized.

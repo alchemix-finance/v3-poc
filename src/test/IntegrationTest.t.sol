@@ -617,6 +617,6 @@ contract IntegrationTest is Test {
         vm.stopPrank();
         (uint256 collateral, uint256 debt, uint256 earmarked) = alchemist.getCDP(tokenId);
         assertApproxEqAbs(debt, 10_000e18 - 2_000e18, 1);
-        assertEq(earmarked, 0);
+        assertEq(earmarked, 500e18);
     }
 }
