@@ -3,18 +3,17 @@ pragma solidity 0.8.28;
 
 import {MockMYTStrategy} from "../mocks/MockMYTStrategy.sol";
 import {TokenUtils} from "../../libraries/TokenUtils.sol";
-import {IVaultV2} from "../../../lib/vault-v2/src/interfaces/IVaultV2.sol";
-import {VaultV2} from "../../../lib/vault-v2/src/VaultV2.sol";
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {IMYTStrategy} from "../../interfaces/IMYTStrategy.sol";
+import {MockMYTVault} from "../mocks/MockMYTVault.sol";
 
 library MYTTestHelper {
     Vm private constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
-    function _setupVault(address collateral, address admin, address curator) internal returns (VaultV2) {
+    function _setupVault(address collateral, address admin, address curator) internal returns (MockMYTVault) {
         // create vault with collateral
-        VaultV2 vault = new VaultV2(admin, collateral);
+        MockMYTVault vault = new MockMYTVault(admin, collateral);
         // set curator
         vault.setCurator(curator);
 

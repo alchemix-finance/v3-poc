@@ -24,6 +24,7 @@ import {AlchemistNFTHelper} from "./libraries/AlchemistNFTHelper.sol";
 import {AlchemistV3Position} from "../AlchemistV3Position.sol";
 import {AlchemistETHVault} from "../AlchemistETHVault.sol";
 import {TokenUtils} from "../libraries/TokenUtils.sol";
+import {VaultV2} from "../../lib/vault-v2/src/VaultV2.sol";
 
 contract InvariantsTest is Test {
     bytes4[] internal selectors;
@@ -150,18 +151,17 @@ contract InvariantsTest is Test {
             admin: alOwner,
             debtToken: address(alToken),
             underlyingToken: address(fakeUnderlyingToken),
-            yieldToken: address(fakeYieldToken),
             depositCap: type(uint256).max,
             blocksPerYear: 2_600_000,
             minimumCollateralization: minimumCollateralization,
             collateralizationLowerBound: 1_052_631_578_950_000_000, // 1.05 collateralization
             globalMinimumCollateralization: 1_111_111_111_111_111_111, // 1.1
-            tokenAdapter: address(fakeYieldToken),
             transmuter: address(transmuterLogic),
             protocolFee: 0,
             protocolFeeReceiver: address(10),
             liquidatorFee: 300, // in bps? 3%
-            repaymentFee: 100
+            repaymentFee: 100,
+            myt: address(new VaultV2(alOwner, address(fakeUnderlyingToken)))
         });
 
         bytes memory alchemParams = abi.encodeWithSelector(AlchemistV3.initialize.selector, params);

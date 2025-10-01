@@ -15,7 +15,6 @@ import {TokenUtils} from "./libraries/TokenUtils.sol";
 import {Unauthorized, IllegalArgument, IllegalState, InsufficientAllowance} from "./base/Errors.sol";
 import "./base/TransmuterErrors.sol";
 
-
 import {console} from "forge-std/console.sol";
 
 /// @title AlchemixV3 Transmuter
@@ -29,7 +28,7 @@ contract Transmuter is ITransmuter, ERC721 {
     uint256 public constant BPS = 10_000;
     uint256 public constant FIXED_POINT_SCALAR = 1e18;
     int256 public constant BLOCK_SCALING_FACTOR = 1e8;
-    
+
     /// @inheritdoc ITransmuter
     string public constant version = "3.0.0";
 
@@ -223,13 +222,15 @@ contract Transmuter is ITransmuter, ERC721 {
 
         // Burn position NFT
         _burn(id);
-        
+
         // Ratio of total synthetics issued by the alchemist / underlingying value of collateral stored in the alchemist
         // If the system experiences bad debt we use this ratio to scale back the value of yield tokens that are transmuted
-        uint256 yieldTokenBalance = TokenUtils.safeBalanceOf(alchemist.yieldToken(), address(this));
+        uint256 yieldTokenBalance = TokenUtils.safeBalanceOf(alchemist.myt(), address(this));
         // Avoid divide by 0
-        uint256 denominator = alchemist.getTotalUnderlyingValue() + alchemist.convertYieldTokensToUnderlying(yieldTokenBalance) > 0 ? alchemist.getTotalUnderlyingValue() + alchemist.convertYieldTokensToUnderlying(yieldTokenBalance) : 1;
-        uint256 badDebtRatio = alchemist.totalSyntheticsIssued() * 10**TokenUtils.expectDecimals(alchemist.yieldToken()) / denominator;
+        uint256 denominator = alchemist.getTotalUnderlyingValue() + alchemist.convertYieldTokensToUnderlying(yieldTokenBalance) > 0
+            ? alchemist.getTotalUnderlyingValue() + alchemist.convertYieldTokensToUnderlying(yieldTokenBalance)
+            : 1;
+        uint256 badDebtRatio = alchemist.totalSyntheticsIssued() * 10 ** TokenUtils.expectDecimals(alchemist.myt()) / denominator;
 
         uint256 scaledTransmuted = amountTransmuted;
 
@@ -252,8 +253,8 @@ contract Transmuter is ITransmuter, ERC721 {
         // Remove untransmuted amount from the staking graph
         if (blocksLeft > 0) _updateStakingGraph(-position.amount.toInt256() * BLOCK_SCALING_FACTOR / transmutationTime.toInt256(), blocksLeft);
 
-        TokenUtils.safeTransfer(alchemist.yieldToken(), msg.sender, alchemist.convertDebtTokensToYield(claimAmount));
-        TokenUtils.safeTransfer(alchemist.yieldToken(), protocolFeeReceiver, alchemist.convertDebtTokensToYield(feeAmount));
+        TokenUtils.safeTransfer(alchemist.myt(), msg.sender, alchemist.convertDebtTokensToYield(claimAmount));
+        TokenUtils.safeTransfer(alchemist.myt(), protocolFeeReceiver, alchemist.convertDebtTokensToYield(feeAmount));
 
         TokenUtils.safeTransfer(syntheticToken, msg.sender, syntheticReturned);
         TokenUtils.safeTransfer(syntheticToken, protocolFeeReceiver, syntheticFee);
@@ -261,7 +262,7 @@ contract Transmuter is ITransmuter, ERC721 {
         // Burn remaining synths that were not returned
         TokenUtils.safeBurn(syntheticToken, amountTransmuted);
         alchemist.reduceSyntheticsIssued(amountTransmuted);
-        alchemist.setTransmuterTokenBalance(TokenUtils.safeBalanceOf(alchemist.yieldToken(), address(this)));
+        alchemist.setTransmuterTokenBalance(TokenUtils.safeBalanceOf(alchemist.myt(), address(this)));
 
         totalLocked -= position.amount;
 

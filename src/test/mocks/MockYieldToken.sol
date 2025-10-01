@@ -13,6 +13,8 @@ interface IMockYieldToken {
     function balanceOf(address account) external view returns (uint256);
     function price() external view returns (uint256);
     function decimals() external view returns (uint8);
+    function updateMockTokenSupply(uint256 value) external;
+    function siphon(uint256 amount) external;
 }
 
 contract MockYieldToken is TestYieldToken {

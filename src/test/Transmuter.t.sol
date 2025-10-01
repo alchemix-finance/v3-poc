@@ -9,21 +9,20 @@ import {AlEth} from "../external/AlEth.sol";
 import {Transmuter} from "../Transmuter.sol";
 import {StakingGraph} from "../libraries/StakingGraph.sol";
 import {console} from "../../lib/forge-std/src/console.sol";
-
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "../interfaces/ITransmuter.sol";
 
 import "../base/TransmuterErrors.sol";
 
 contract MockAlchemist {
-    AlEth collateral;
-
     uint256 public constant FIXED_POINT_SCALAR = 1e18;
-
     uint256 public underlyingValue;
     uint256 public syntheticsIssued;
+    address public myt;
 
-    constructor(AlEth _collateral) {
-        collateral = _collateral;
+    constructor(address _myt) {
+        myt = _myt;
     }
 
     function setUnderlyingValue(uint256 amount) public {
@@ -51,7 +50,7 @@ contract MockAlchemist {
     }
 
     function redeem(uint256 underlying) external {
-        collateral.transfer(msg.sender, convertUnderlyingTokensToYield(underlying));
+        IERC20(myt).transfer(msg.sender, convertUnderlyingTokensToYield(underlying));
     }
 
     function totalDebt() external pure returns (uint256) {
@@ -66,16 +65,12 @@ contract MockAlchemist {
         }
     }
 
-    function reduceSyntheticsIssued(uint256 amount) external {
-        
-    }
+    function reduceSyntheticsIssued(uint256 amount) external {}
 
-    function setTransmuterTokenBalance(uint256 amount) external {
-
-    }
+    function setTransmuterTokenBalance(uint256 amount) external {}
 
     function yieldToken() external view returns (address) {
-        return address(collateral);
+        return address(myt);
     }
 
     function getTotalUnderlyingValue() external view returns (uint256) {
@@ -87,36 +82,47 @@ contract MockAlchemist {
     }
 }
 
+contract MockMorphoV2Vault is ERC20 {
+    // Simplied vault for testing
+    // Shares are still treated as 18 decimal erc20 tokens
+    // regardless of the underlying token decimals
+    constructor() ERC20("Mock Myt Vault", "MMV") {}
+}
+
 contract TransmuterTest is Test {
     using StakingGraph for StakingGraph.Graph;
 
     AlEth public alETH;
-    AlEth public collateralToken;
+    ERC20 public collateralToken; // morpho vault 2 shares
     AlEth public underlyingToken;
     Transmuter public transmuter;
 
     MockAlchemist public alchemist;
 
     StakingGraph.Graph private graph;
+    MockMorphoV2Vault public vault;
+    address public admin;
+    address public curator;
+
+    event TransmuterLog(string message, uint256 value);
 
     function setUp() public {
         alETH = new AlEth();
-        collateralToken = new AlEth();
         underlyingToken = new AlEth();
-
-        alchemist = new MockAlchemist(collateralToken);
-
+        vault = new MockMorphoV2Vault();
+        collateralToken = ERC20(address(vault));
+        alchemist = new MockAlchemist(address(collateralToken));
         transmuter = new Transmuter(ITransmuter.TransmuterInitializationParams(address(alETH), address(this), 5_256_000, 0, 0, 52_560_000 / 2));
 
         transmuter.setAlchemist(address(alchemist));
 
         transmuter.setDepositCap(uint256(type(int256).max));
 
-        deal(address(collateralToken), address(alchemist), type(uint256).max);
+        deal(alchemist.myt(), address(alchemist), type(uint256).max);
         deal(address(alETH), address(0xbeef), type(uint256).max);
 
         vm.prank(address(alchemist));
-        collateralToken.approve(address(transmuter), type(uint256).max);
+        IERC20(alchemist.myt()).approve(address(transmuter), type(uint256).max);
 
         vm.prank(address(0xbeef));
         alETH.approve(address(transmuter), type(uint256).max);
@@ -124,7 +130,7 @@ contract TransmuterTest is Test {
 
     function testSetAdmin() public {
         transmuter.setPendingAdmin(address(0xbeef));
-        
+
         vm.prank(address(0xbeef));
         transmuter.acceptAdmin();
 
@@ -133,13 +139,12 @@ contract TransmuterTest is Test {
 
     function testSetAdminWrongAddress() public {
         transmuter.setPendingAdmin(address(0xbeef));
-        
+
         vm.startPrank(address(0xbeef123));
         vm.expectRevert();
         transmuter.acceptAdmin();
         vm.stopPrank();
     }
-
 
     function testURI() public {
         vm.prank(address(0xbeef));
@@ -169,9 +174,7 @@ contract TransmuterTest is Test {
     function testCreateRedemption() public {
         vm.prank(address(0xbeef));
         transmuter.createRedemption(100e18);
-
         Transmuter.StakingPosition memory position = transmuter.getPosition(1);
-
         assertEq(position.amount, 100e18);
         assertEq(transmuter.totalLocked(), 100e18);
     }
@@ -222,14 +225,13 @@ contract TransmuterTest is Test {
         transmuter.claimRedemption(1);
     }
 
-    function testClaimRedemption() public {
+    function test_target_ClaimRedemption() public {
         deal(address(collateralToken), address(transmuter), uint256(type(int256).max) / 1e20);
 
         vm.prank(address(0xbeef));
         transmuter.createRedemption(100e18);
 
         vm.roll(block.number + 5_256_000);
-
         assertEq(collateralToken.balanceOf(address(0xbeef)), 0);
         assertEq(alETH.balanceOf(address(transmuter)), 100e18);
 
@@ -470,18 +472,18 @@ contract TransmuterTest is Test {
         transmuter.createRedemption(100e18);
         vm.roll(block.number + 5_256_000); // Mature the staking position
         alchemist.setUnderlyingValue(0); // Simulate all users exiting with 0 underlying left
-        emit log_named_uint("total token there",alchemist.getTotalUnderlyingValue());
+        emit log_named_uint("total token there", alchemist.getTotalUnderlyingValue());
         vm.prank(address(0xbeef));
         transmuter.claimRedemption(1);
     }
 
     function test_delta_overflow() public {
-        int256 amount = (2**111) - 1;
+        int256 amount = (2 ** 111) - 1;
         uint32 start = 1000;
         uint32 duration = 10;
 
         graph.addStake(amount / 10, start, duration);
-        
+
         int256 result = graph.queryStake(start, start + duration);
 
         assertApproxEqAbs(result, amount, 10);

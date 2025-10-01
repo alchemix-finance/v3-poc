@@ -32,6 +32,7 @@ import {AggregatorV3Interface} from "../../lib/chainlink-brownie-contracts/contr
 import {TokenUtils} from "../libraries/TokenUtils.sol";
 import {AlchemistTokenVault} from "../AlchemistTokenVault.sol";
 import {VaultV2Factory} from "../../lib/vault-v2/src/VaultV2Factory.sol";
+import {VaultV2} from "../../lib/vault-v2/src/VaultV2.sol";
 
 contract MYTStrategyTest is Test {
     using SafeERC20 for IERC20;
@@ -109,18 +110,17 @@ contract MYTStrategyTest is Test {
             admin: alOwner,
             debtToken: address(alToken),
             underlyingToken: address(fakeUnderlyingToken),
-            yieldToken: address(yieldToken),
             blocksPerYear: 2_600_000,
             depositCap: type(uint256).max,
             minimumCollateralization: 150e18,
             collateralizationLowerBound: 110e18,
             globalMinimumCollateralization: 150e18,
-            tokenAdapter: address(yieldToken),
             transmuter: address(transmuter),
             protocolFee: 50,
             protocolFeeReceiver: admin,
             liquidatorFee: 100,
-            repaymentFee: 50
+            repaymentFee: 50,
+            myt: address(new VaultV2(alOwner, address(fakeUnderlyingToken)))
         });
 
         bytes memory alchemParams = abi.encodeWithSelector(AlchemistV3.initialize.selector, params);

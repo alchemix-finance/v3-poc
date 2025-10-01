@@ -14,7 +14,7 @@ contract MockMYTStrategy is MYTStrategy {
     }
 
     function _allocate(uint256 amount) internal override returns (uint256 depositReturn) {
-        // if native eth used, most strats will have theor own function to wrap eth to weth
+        // if native eth used, most strats will have their own function to wrap eth to weth
         // so will assume that all token deposits are done with weth
         TokenUtils.safeApprove(token.underlyingToken(), address(token), 2 * amount);
         depositReturn = token.deposit(amount);
