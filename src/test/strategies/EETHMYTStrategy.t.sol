@@ -136,7 +136,7 @@ contract EETHMYTStrategyTest is Test {
             abi.encode(0),
             ALLOCATION_AMOUNT
         );
-        
+        vm.warp(block.timestamp + 30 days);
         // Record initial weETH balance in strategy
         uint256 initialWeethBalance = weeth.balanceOf(address(strategy));
 

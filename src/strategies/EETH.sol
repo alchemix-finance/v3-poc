@@ -4,6 +4,8 @@ pragma solidity 0.8.28;
 import "forge-std/console.sol";
 import {MYTStrategy} from "../MYTStrategy.sol";
 import {TokenUtils} from "../libraries/TokenUtils.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 
 interface DepositAdapter {
     function depositWETHForWeETH(uint256 amount, address referal) external returns (uint256);
@@ -28,7 +30,7 @@ contract EETHMYTStrategy is MYTStrategy {
     DepositAdapter public immutable depositAdapter;
     RedemptionManager public immutable redemptionManager;
     IWETH public immutable weth;
-
+    address immutable self;
     constructor(
         address _myt,
         StrategyParams memory _params,
@@ -43,7 +45,7 @@ contract EETHMYTStrategy is MYTStrategy {
         require(_weeth != address(0));
         require(_weth != address(0));
         require(_permit2Address != address(0));
-
+        self = address(this);
         depositAdapter = DepositAdapter(_depositAdapter);
         redemptionManager = RedemptionManager(_redemptionManager);
         weth = IWETH(_weth);
@@ -55,8 +57,6 @@ contract EETHMYTStrategy is MYTStrategy {
         //require(depositReturn == amount, "IA");
         //TokenUtils.safeTransfer(address(receiptToken), address(MYT), depositReturn);
         weth.approve(address(depositAdapter), 0);
-        address lp = redemptionManager.liquidityPool();
-        console.log(lp.balance);
     }
 
     function _deallocate(uint256 amount) internal override returns (uint256) {
@@ -64,24 +64,27 @@ contract EETHMYTStrategy is MYTStrategy {
 
         require(amount <= address(lp).balance, "LIQ");
         require(redemptionManager.canRedeem(amount), "do not redeeeeeem");
-        
+        require(amount <= IERC20(receiptToken).balanceOf(self), "Insufficient weETH balance");
+
         // Approve redemption manager to spend weETH
         TokenUtils.safeApprove(address(receiptToken), address(redemptionManager), amount);
         
-
-        uint256 redemptionAmount = redemptionManager.redeemWeEth(amount, address(this));
-        // FIXME unspecified revert right after redeemWeEth returns ?
-
-        uint256 ethBalance = address(this).balance;
-        if (ethBalance > 0) {
-            weth.deposit{value: ethBalance}();
-            TokenUtils.safeTransfer(address(weth), address(MYT), ethBalance);
+        redemptionManager.redeemWeEth(amount, self);
+        
+        // Convert any received ETH to WETH (enough gas in _deallocate)
+        uint256 ethReceived = address(this).balance;
+        if (ethReceived > 0) {
+            weth.deposit{value: ethReceived}();
         }
         
-        // Reset approval to zero
-        TokenUtils.safeApprove(address(receiptToken), address(redemptionManager), 0);
+        // Transfer all WETH to MYT vault
+        uint256 wethBalance = IERC20(address(weth)).balanceOf(address(this));
+        if (wethBalance > 0) {
+            TokenUtils.safeTransfer(address(weth), address(MYT), wethBalance);
+        }
         
-        return redemptionAmount;
+        // Return the original amount to match vault expectations
+        return amount;
     }
 
     function _computeBaseRatePerSecond() internal override returns (uint256 ratePerSec, uint256 newIndex) {
@@ -98,5 +101,6 @@ contract EETHMYTStrategy is MYTStrategy {
 
     receive() external payable {
         require(msg.sender == address(redemptionManager), "Only EETH redemption");
+        // Don't convert to WETH here - not enough gas. Will be handled in _deallocate
     }
 }
