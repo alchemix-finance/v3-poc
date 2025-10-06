@@ -57,7 +57,7 @@ contract MYTStrategy is IMYTStrategy, Ownable {
 
     /// @notice Modifier to restrict access to the vault **managed** by the MYT contract
     modifier onlyVault() {
-        require(msg.sender == address(MYT), "Only vault can call this function");
+        require(msg.sender == address(MYT), "PD");
         _;
     }
 
