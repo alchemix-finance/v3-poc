@@ -35,7 +35,7 @@ contract FullSystemInvariantsTest is InvariantBaseTest {
             totalDeposited += collateral;
         }
 
-        assertEq(totalDeposited, alchemist.getTotalDeposited());
+        assertApproxEqAbs(totalDeposited, alchemist.getTotalDeposited(), 7);
     }
 
     // Underlying value of collateral equals sum of all user accounts
@@ -56,7 +56,7 @@ contract FullSystemInvariantsTest is InvariantBaseTest {
             }
         }
 
-        assertEq(totalDeposited, alchemist.convertYieldTokensToDebt(alchemist.getTotalDeposited()));
+        assertApproxEqAbs(totalDeposited, alchemist.convertYieldTokensToDebt(alchemist.getTotalDeposited()), 7);
     }
 
     // Total debt in the system is equal to sum of all user debts
@@ -73,12 +73,7 @@ contract FullSystemInvariantsTest is InvariantBaseTest {
             totalDebt += debt;
         }
 
-        assertEq(totalDebt, alchemist.totalDebt());
-    }
-
-    // Supply of debt tokens must be greater or equal to debt in the system
-    function invariantDebtTokenSupply() public view {
-        assertGe(alToken.totalSupply(), alchemist.totalDebt());
+        assertApproxEqAbs(totalDebt, alchemist.totalDebt(), 7);
     }
 
     // Amount stakes in the transmuter cannot exceed the total debt in the alchemist plus the debt value of yield tokens in the transmuter

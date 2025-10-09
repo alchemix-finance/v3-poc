@@ -1162,7 +1162,7 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         uint256 redemptionSurvivalOld = PositionDecay.SurvivalFromWeight(account.lastAccruedRedemptionWeight);
         if (redemptionSurvivalOld == 0) redemptionSurvivalOld = ONE_Q128;
         uint256 redemptionSurvivalNew  = PositionDecay.SurvivalFromWeight(_redemptionWeight);
-        // Survival during current sync window
+        // Survival during the current sync window
         uint256 survivalRatio = _divQ128(redemptionSurvivalNew, redemptionSurvivalOld);
 
         // User exposure at last sync used to calculate newly earmarked debt pre redemption
@@ -1272,6 +1272,8 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     }
 
     // Math helpers for Q128.128
+
+    // mul with forced round up to 
     function _mulQ128(uint256 aQ, uint256 bQ) private pure returns (uint256 z) {
         if (aQ == 0 || bQ == 0) return 0;
         uint256 lo; uint256 hi;

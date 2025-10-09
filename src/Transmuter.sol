@@ -4,9 +4,9 @@ pragma solidity ^0.8.28;
 import {IAlchemistV3} from "./interfaces/IAlchemistV3.sol";
 import {ITransmuter} from "./interfaces/ITransmuter.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {ERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
-
 import {NFTMetadataGenerator} from "./libraries/NFTMetadataGenerator.sol";
 import {SafeCast} from "./libraries/SafeCast.sol";
 import {StakingGraph} from "./libraries/StakingGraph.sol";
@@ -18,7 +18,7 @@ import "./base/TransmuterErrors.sol";
 /// @title AlchemixV3 Transmuter
 ///
 /// @notice A contract which facilitates the exchange of alAssets to yield bearing assets.
-contract Transmuter is ITransmuter, ERC721 {
+contract Transmuter is ITransmuter, ERC721Enumerable {
     using StakingGraph for StakingGraph.Graph;
     using SafeCast for int256;
     using SafeCast for uint256;
@@ -59,9 +59,6 @@ contract Transmuter is ITransmuter, ERC721 {
 
     /// @inheritdoc ITransmuter
     IAlchemistV3 public alchemist;
-
-    /// @dev Array of registered alchemists.
-    address[] public alchemists; 
 
     /// @dev Map of user positions data.
     mapping(uint256 => StakingPosition) private _positions;
@@ -154,8 +151,6 @@ contract Transmuter is ITransmuter, ERC721 {
     }
 
     function tokenURI(uint256 id) public view override returns (string memory) {
-        // revert if the token does not exist
-        ERC721(address(this)).ownerOf(id);
         return NFTMetadataGenerator.generateTokenURI(id, "Transmuter V3 Position");
     }
 

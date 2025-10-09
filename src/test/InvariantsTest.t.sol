@@ -7,6 +7,7 @@ import "../../lib/openzeppelin-contracts/contracts/proxy/transparent/Transparent
 import "../libraries/SafeCast.sol";
 import "../../lib/forge-std/src/Test.sol";
 import {SafeERC20} from "../libraries/SafeERC20.sol";
+import {IERC721} from "../../lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 import {console} from "../../lib/forge-std/src/console.sol";
 import {AlchemistV3} from "../AlchemistV3.sol";
 import {AlchemicTokenV3} from "../test/mocks/AlchemicTokenV3.sol";
@@ -238,7 +239,6 @@ contract InvariantsTest is Test {
         for (uint256 i; i < users.length; ++i) {
             address user = users[i];
 
-            // a single position nft would have been minted to address(0xbeef)
             uint256 tokenId = AlchemistNFTHelper.getFirstTokenId(user, address(alchemistNFT));
 
             uint256 borrowable;
@@ -250,7 +250,7 @@ contract InvariantsTest is Test {
             }
         }
 
-        return _randomNonZero(users, seed);
+        return _randomNonZero(candidates, seed);
     }
 
     function _randomMinter(address[] memory users, uint256 seed) internal view returns (address) {
@@ -258,12 +258,12 @@ contract InvariantsTest is Test {
 
         for (uint256 i; i < users.length; ++i) {
             address user = users[i];
-            // a single position nft would have been minted to address(0xbeef)
+            
             uint256 tokenId = AlchemistNFTHelper.getFirstTokenId(user, address(alchemistNFT));
 
             uint256 borrowable;
 
-            if (tokenId != 0) alchemist.getMaxBorrowable(tokenId);
+            if (tokenId != 0) borrowable = alchemist.getMaxBorrowable(tokenId);
 
             if (borrowable > 0) {
                 candidates[i] = user;
@@ -278,7 +278,7 @@ contract InvariantsTest is Test {
 
         for (uint256 i; i < users.length; ++i) {
             address user = users[i];
-            // a single position nft would have been minted to address(0xbeef)
+            
             uint256 tokenId = AlchemistNFTHelper.getFirstTokenId(user, address(alchemistNFT));
             uint256 collateral;
             uint256 debt;
@@ -298,7 +298,7 @@ contract InvariantsTest is Test {
 
         for (uint256 i; i < users.length; ++i) {
             address user = users[i];
-            // a single position nft would have been minted to address(0xbeef)
+            
             uint256 tokenId = AlchemistNFTHelper.getFirstTokenId(user, address(alchemistNFT));
 
             uint256 collateral;
@@ -317,6 +317,28 @@ contract InvariantsTest is Test {
 
     function _randomStaker(address[] memory users, uint256 seed) internal pure returns (address) {
         return _randomNonZero(users, seed);
+    }
+
+    function _randomClaimer(address[] memory users, uint256 seed) internal view returns (address) {
+        address[] memory candidates = new address[](users.length);
+
+        for (uint256 i = 0; i < users.length; ++i) {
+            address user = users[i];
+
+            uint256 tokenCount = ITransmuter(address(transmuterLogic)).balanceOf(user);
+            uint256[] memory tokenIds = new uint256[](tokenCount);
+
+            if (tokenCount > 0) {
+                // Loop through each token and retrieve its token ID via the enumerable interface.
+                for (uint256 j = 0; j < tokenCount; j++) {
+                    tokenIds[j] = ITransmuter(address(transmuterLogic)).tokenOfOwnerByIndex(user, j);
+                }
+
+                if (tokenIds[0] != 0) candidates[i] = user;
+            }
+        }
+
+        return _randomNonZero(candidates, seed);
     }
 
     function _randomNonZero(address[] memory users, uint256 seed) internal pure returns (address) {

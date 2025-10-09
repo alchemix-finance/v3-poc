@@ -57,6 +57,7 @@ contract InvariantBaseTest is InvariantsTest {
     }
 
     function _repay(uint256 tokenId, uint256 amount, address onBehalf) internal logCall("repay") {
+        vm.roll(block.number + 1);
         fakeUnderlyingToken.mint(onBehalf, amount);
         vm.startPrank(onBehalf);
         fakeUnderlyingToken.approve(address(fakeYieldToken), amount);
@@ -67,6 +68,7 @@ contract InvariantBaseTest is InvariantsTest {
     }
 
     function _burn(uint256 tokenId, uint256 amount, address onBehalf) internal logCall("burn") {
+        vm.roll(block.number + 1);
         vm.prank(onBehalf);
         alchemist.burn(amount, tokenId);
     }
@@ -79,10 +81,10 @@ contract InvariantBaseTest is InvariantsTest {
         vm.stopPrank();
     }
 
-    function _claim(uint256 amount) internal logCall("stake") {
+    function _claim(uint256 tokenId, address onBehalf) internal logCall("claim") {
         vm.roll(block.number + 10);
-        vm.startPrank(address(transmuterLogic));
-        alchemist.redeem(amount);
+        vm.startPrank(onBehalf);
+        transmuterLogic.claimRedemption(tokenId);
         vm.stopPrank();
     }
 
@@ -140,10 +142,12 @@ contract InvariantBaseTest is InvariantsTest {
         address onBehalf = _randomRepayer(targetSenders(), onBehalfSeed);
         if (onBehalf == address(0)) return;
 
-        amount = bound(amount, 0, MAX_TEST_VALUE);
+        uint256 tokenId = AlchemistNFTHelper.getFirstTokenId(onBehalf, address(alchemistNFT));
+        (, uint256 debt, uint256 earmarked) = alchemist.getCDP(tokenId);
+
+        amount = bound(amount, 0, debt);
         if (amount == 0) return;
 
-        uint256 tokenId = AlchemistNFTHelper.getFirstTokenId(onBehalf, address(alchemistNFT));
 
         _repay(tokenId, amount, onBehalf);
     }
@@ -152,34 +156,36 @@ contract InvariantBaseTest is InvariantsTest {
         address onBehalf = _randomBurner(targetSenders(), onBehalfSeed);
         if (onBehalf == address(0)) return;
 
-        amount = bound(amount, 0, MAX_TEST_VALUE);
-        if (amount == 0) return;
-
         uint256 tokenId = AlchemistNFTHelper.getFirstTokenId(onBehalf, address(alchemistNFT));
+
+        (, uint256 debt, uint256 earmarked) = alchemist.getCDP(tokenId);
+
+        uint256 burnable = (debt - earmarked) > (alchemist.totalSyntheticsIssued() - transmuterLogic.totalLocked()) 
+        ? (alchemist.totalSyntheticsIssued() - transmuterLogic.totalLocked()) 
+        :  (alchemist.totalSyntheticsIssued() - transmuterLogic.totalLocked()) - (debt - earmarked);
+
+        amount = bound(amount, 0, burnable);
+        if (amount == 0) return;
 
         _burn(tokenId, amount, onBehalf);
     }
 
     function transmuterStake(uint256 amount, uint256 onBehalfSeed) external {
-        address onBehalf = _randomDepositor(targetSenders(), onBehalfSeed);
+        address onBehalf = _randomNonZero(targetSenders(), onBehalfSeed);
         if (onBehalf == address(0)) return;
 
-        // TODO: Fix after burn discussion
-        // uint256 totalLocked = transmuterLogic.totalLocked() > fakeYieldToken.balanceOf(address(transmuterLogic))
-        //     ? transmuterLogic.totalLocked() - fakeYieldToken.balanceOf(address(transmuterLogic))
-        //    : 0;
+        uint256 maxStakeable = alchemist.totalSyntheticsIssued() - transmuterLogic.totalLocked();
 
-        amount = bound(amount, 0, alchemist.totalDebt());
+        amount = bound(amount, 0, maxStakeable);
         if (amount == 0) return;
 
         _stake(amount, onBehalf);
     }
 
-    function transmuterClaim(uint256 amount, uint256 onBehalfSeed) external {
-        // amount = bound(amount, 0, alchemist.totalDebt());
-        // if (amount == 0) return;
-        // // if (amount > )
+    function transmuterClaim(uint256 onBehalfSeed) external {
+        address onBehalf = _randomClaimer(targetSenders(), onBehalfSeed);
+        if (onBehalf == address(0)) return;
 
-        // _claim(amount);
+        _claim(ITransmuter(address(transmuterLogic)).tokenOfOwnerByIndex(onBehalf, 0), onBehalf);
     }
 }

@@ -2,8 +2,9 @@
 pragma solidity ^0.8.28;
 
 import "./IAlchemistV3.sol";
+import {IERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
 
-interface ITransmuter {
+interface ITransmuter is IERC721Enumerable {
     struct StakingPosition {
         // Amount staked.
         uint256 amount;
@@ -59,9 +60,6 @@ interface ITransmuter {
 
     /// @notice Returns the total locked debt tokens in the transmuter.
     function totalLocked() external view returns (uint256 totalLocked);
-
-    /// @notice Returns array of alchemists.
-    function alchemists(uint256) external view returns (address alchemist);
 
     function protocolFeeReceiver() external view returns (address receiver);
 
