@@ -231,8 +231,15 @@ contract Transmuter is ITransmuter, ERC721Enumerable {
 
         if (amountToRedeem > 0) alchemist.redeem(amountToRedeem);
 
-        uint256 feeAmount = scaledTransmuted * transmutationFee / BPS;
-        uint256 claimAmount = scaledTransmuted - feeAmount;
+        uint256 totalYield = alchemist.convertDebtTokensToYield(scaledTransmuted);
+
+        // Cap to what we actually hold now (handles redeem() rounding shortfalls).
+        uint256 balAfterRedeem = TokenUtils.safeBalanceOf(alchemist.yieldToken(), address(this));
+        uint256 distributable = totalYield <= balAfterRedeem ? totalYield : balAfterRedeem;
+
+        // Split distributable amount. Round fee down; claimant gets the remainder.
+        uint256 feeYield = distributable * transmutationFee / BPS;
+        uint256 claimYield = distributable - feeYield;
 
         uint256 syntheticFee = amountNottransmuted * exitFee / BPS;
         uint256 syntheticReturned = amountNottransmuted - syntheticFee;
@@ -240,8 +247,8 @@ contract Transmuter is ITransmuter, ERC721Enumerable {
         // Remove untransmuted amount from the staking graph
         if (blocksLeft > 0) _updateStakingGraph(-position.amount.toInt256() * BLOCK_SCALING_FACTOR / transmutationTime.toInt256(), blocksLeft);
 
-        TokenUtils.safeTransfer(alchemist.yieldToken(), msg.sender, alchemist.convertDebtTokensToYield(claimAmount));
-        TokenUtils.safeTransfer(alchemist.yieldToken(), protocolFeeReceiver, alchemist.convertDebtTokensToYield(feeAmount));
+        TokenUtils.safeTransfer(alchemist.yieldToken(), msg.sender, claimYield);
+        TokenUtils.safeTransfer(alchemist.yieldToken(), protocolFeeReceiver, feeYield);
 
         TokenUtils.safeTransfer(syntheticToken, msg.sender, syntheticReturned);
         TokenUtils.safeTransfer(syntheticToken, protocolFeeReceiver, syntheticFee);
@@ -253,18 +260,21 @@ contract Transmuter is ITransmuter, ERC721Enumerable {
 
         totalLocked -= position.amount;
 
-        emit PositionClaimed(msg.sender, claimAmount, syntheticReturned);
+        emit PositionClaimed(msg.sender, claimYield, syntheticReturned);
 
         delete _positions[id];
     }
 
     /// @inheritdoc ITransmuter
     function queryGraph(uint256 startBlock, uint256 endBlock) external view returns (uint256) {
-        int256 queried = _stakingGraph.queryStake(startBlock, endBlock);
+        if (endBlock <= startBlock) return 0;
 
+        int256 queried = _stakingGraph.queryStake(startBlock, endBlock);
         if (queried == 0) return 0;
-        // + 1 for rounding error
-        return (queried / BLOCK_SCALING_FACTOR).toUint256() + 1;
+
+        // You currently add +1 for rounding; keep in mind this can create off-by-one deltas.
+        return (queried / BLOCK_SCALING_FACTOR).toUint256()
+            + (queried % BLOCK_SCALING_FACTOR == 0 ? 0 : 1);
     }
 
     /// @dev Updates staking graphs

@@ -3706,13 +3706,7 @@ contract AlchemistV3Test is Test {
         vm.startPrank(externalUser);
         alchemist.liquidate(tokenIdFor0xBeef);
         vm.stopPrank();
-        console.log("IERC20(alchemist.yieldToken()).balanceOf(address(transmuterLogic)):", IERC20(alchemist.yieldToken()).balanceOf(address(transmuterLogic)));
-        ///////////////////////////////
-        // claimRedemption() success //
-        ///////////////////////////////
         vm.startPrank(anotherExternalUser);
-        // [FAIL: panic: arithmetic underflow or overflow (0x11)]
-        vm.expectRevert(abi.encodeWithSignature("Panic(uint256)", 0x11));
         transmuterLogic.claimRedemption(1);
         vm.stopPrank();
     }
@@ -3832,5 +3826,141 @@ contract AlchemistV3Test is Test {
         (uint256 collateral, uint256 debt, uint256 earmarked) = alchemist.getCDP(tokenId);
         assertApproxEqAbs(debt, 10_000e18 - 2000e18, 1);
         assertApproxEqAbs(earmarked, 500e18, 1);
+    }
+
+    function test_Repro_InvariantDebtMismatch() external {
+
+        address S1 = 0x71b3Ff058345Ab2Ad3f59aE87D88a98ec95eeA95;
+        address S2 = 0xc2974C44C355689b1F0608d4BD22D026256b5cDA; // unused, included for completeness
+        address S3 = 0xaAa9aA61BF1519F1bc4830Cf80eA14C7c742E1Cd;
+        address S4 = 0xA6A4A5d3b4b8Af71a895F06e70c928Cd374C2dD0; // unused
+        address S5 = 0xB788D82d64BD2aA02B6331EbbBD7622Cb5394856;
+        address S6 = 0x326935A8eb4f0d2F47d90DC2665CFb67A42f9733;
+        address S7 = 0xD28A15E0406206874e46eeA4a0c9E8dBd8d581c3;
+        address S8 = 0x558a3E99E1b0cD45f37b0d2AC7Ba7E6E448341b5;
+
+        // --- STEP 1: S8 deposit 4,315 (mints position #1) ---
+        _ensureYTFor(S8, 4315);
+        vm.prank(S8);
+        alchemist.deposit(4315, S8, 0);
+        uint256 id8 = _id(S8); // expect 1
+
+        // --- STEP 2: S3 deposit 20,625 (position #2) ---
+        _ensureYTFor(S3, 20625);
+        vm.prank(S3);
+        alchemist.deposit(20625, S3, 0);
+        uint256 id3 = _id(S3); // expect 2
+
+        // --- STEP 3: S8 borrows 926, then 2682, then 82 ---
+        vm.prank(S8); alchemist.mint(id8,  926, S8);
+        vm.prank(S8); alchemist.mint(id8, 2682, S8);
+        vm.prank(S8); alchemist.mint(id8,   82, S8);
+
+        // --- STEP 4: S1 deposit 10,058 (position #3) ---
+        _ensureYTFor(S1, 10058);
+        vm.prank(S1);
+        alchemist.deposit(10058, S1, 0);
+        uint256 id1 = _id(S1); // expect 3
+
+        // --- STEP 5: S8 deposits 71,366,691,463,723,930,466,878 more into id #1 ---
+        _ensureYTFor(S8, 71_366_691_463_723_930_466_878);
+        vm.prank(S8);
+        alchemist.deposit(71_366_691_463_723_930_466_878, S8, id8);
+
+        // --- STEP 6: S5 deposit 434 (position #4) ---
+        _ensureYTFor(S5, 434);
+        vm.prank(S5);
+        alchemist.deposit(434, S5, 0);
+        uint256 id5 = _id(S5); // expect 4
+
+        // --- STEP 7: S7 stakes 1,260 into Transmuter (redemption NFT #1) ---
+        deal(address(alToken), S7, 1260);
+        vm.startPrank(S7);
+        IERC20(address(alToken)).approve(address(transmuterLogic), type(uint256).max);
+        transmuterLogic.createRedemption(1260);
+        vm.stopPrank();
+
+        // --- STEP 8: roll to block 21,864,855 ---
+        vm.roll(21_864_855);
+
+        // --- STEP 9: S6 deposit 3,983,749,266,249,185,419,073,861,613 (position #5) ---
+        _ensureYTFor(S6, 3_983_749_266_249_185_419_073_861_613);
+        vm.prank(S6);
+        alchemist.deposit(3_983_749_266_249_185_419_073_861_613, S6, 0);
+        uint256 id6 = _id(S6); // expect 5
+
+        // --- STEP 10: S7 claims redemption #1 (internal rolls in your trace to 21,864,865) ---
+        vm.roll(21_864_865);
+        vm.prank(S7);
+        transmuterLogic.claimRedemption(1);
+
+        // --- STEP 11: S8 repays 3,166 on id #1 (roll to 21,864,866) ---
+        vm.roll(21_864_866);
+        _ensureYTFor(S8, 3166);
+        vm.prank(S8);
+        alchemist.repay(3166, id8);
+
+        // --- STEP 12: roll to block 21,933,459 ---
+        vm.roll(21_933_459);
+
+        // --- STEP 13: S6 borrows 3,363,079,585,720,735,973,388,572,353 on id #5 ---
+        vm.prank(S6);
+        alchemist.mint(id6, 3_363_079_585_720_735_973_388_572_353, S6);
+
+        // --- STEP 14: S6 stakes 121,988,140,188,341,114,765,962,403 into Transmuter ---
+        deal(address(alToken), S6, 121_988_140_188_341_114_765_962_403 + IERC20(alToken).balanceOf(S6));
+        vm.startPrank(S6);
+        IERC20(address(alToken)).approve(address(transmuterLogic), type(uint256).max);
+        transmuterLogic.createRedemption(121_988_140_188_341_114_765_962_403);
+        vm.stopPrank();
+
+        // --- STEP 15: roll to block 21,933,460 and burn 9 from id #5 ---
+        vm.roll(21_933_460);
+        vm.startPrank(S6);
+        IERC20(address(alToken)).approve(address(alchemist), type(uint256).max);
+        alchemist.burn(9, id6);
+        vm.stopPrank();
+
+        // --- STEP 16: Pokes (same pattern/order as your invariant) ---
+        vm.prank(address(this)); alchemist.poke(id1);
+        vm.prank(address(this)); alchemist.poke(id3);
+        vm.prank(address(this)); alchemist.poke(id5);
+        vm.prank(address(this)); alchemist.poke(id6);
+        vm.prank(address(this)); alchemist.poke(id8);
+
+        // --- STEP 17: Read CDPs and assert (EXPECTED TO FAIL) ---
+        (, uint256 debt1, ) = alchemist.getCDP(id1); // expected ~516 after flows
+        (, uint256 debt2, ) = alchemist.getCDP(id3); // 0
+        (, uint256 debt4, ) = alchemist.getCDP(id5); // 0
+        (, uint256 debt5, ) = alchemist.getCDP(id6); // ~3.363079562511424674236914284e27
+        (, uint256 debt8, ) = alchemist.getCDP(id8); // 0 or small after repay
+
+        // In the final trace the only nonzero debts are id6 and a tiny one on id1.
+        uint256 sumDebts = debt1 + debt2 + debt4 + debt5 + debt8;
+        uint256 total = alchemist.totalDebt();
+
+        // Helpful logs for triage
+        emit log_named_uint("sum(getCDP(...).debt)", sumDebts);
+        emit log_named_uint("alchemist.totalDebt()", total);
+
+        // This mirrors the final failing check in your invariant run.
+        // It should currently FAIL with delta ~= 23209311299151658061 (2.3209e19).
+        assertApproxEqAbs(sumDebts, total, 100);
+    }
+
+    function _ensureYTFor(address user, uint256 amt) internal {
+        // fund underlying and approve the YT to pull it
+        deal(address(fakeUnderlyingToken), user, IERC20(fakeUnderlyingToken).balanceOf(user) + amt);
+        vm.startPrank(user);
+        IERC20(fakeUnderlyingToken).approve(address(fakeYieldToken), type(uint256).max);
+        fakeYieldToken.mint(amt, user);
+        // approve alchemist to pull YT for deposits/repays
+        IERC20(address(fakeYieldToken)).approve(address(alchemist), type(uint256).max);
+        vm.stopPrank();
+    }
+
+    function _id(address owner) internal view returns (uint256) {
+        // Your repo likely already has this helper; keeping call site the same as your snippet:
+        return AlchemistNFTHelper.getFirstTokenId(owner, address(alchemistNFT));
     }
 }

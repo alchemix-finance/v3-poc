@@ -188,8 +188,8 @@ contract InvariantsTest is Test {
         targetSelector(FuzzSelector({addr: address(this), selectors: selectors}));
     }
 
-    modifier logCall(string memory name) {
-        console2.log(msg.sender, "->", name);
+    modifier logCall(address onBehalf, string memory name) {
+        console2.log(onBehalf, "->", name);
 
         _;
     }

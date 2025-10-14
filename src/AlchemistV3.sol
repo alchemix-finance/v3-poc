@@ -337,7 +337,8 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
     function getMaxBorrowable(uint256 tokenId) external view returns (uint256) {
         (uint256 debt,, uint256 collateral) = _calculateUnrealizedDebt(tokenId);
         uint256 debtValueOfCollateral = convertYieldTokensToDebt(collateral);
-        return (debtValueOfCollateral * FIXED_POINT_SCALAR / minimumCollateralization) - debt;
+        uint256 capacity = (debtValueOfCollateral * FIXED_POINT_SCALAR / minimumCollateralization);
+        return debt > capacity  ? 0 : capacity - debt;
     }
 
     /// @inheritdoc IAlchemistV3State
@@ -591,36 +592,52 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         uint256 liveEarmarked = cumulativeEarmarked;
         if (amount > liveEarmarked) amount = liveEarmarked;
 
-        // Earmark survival applied to global accumulator
-        if (liveEarmarked != 0 && amount != 0) {
-            uint256 survival = ((liveEarmarked - amount) << 128) / liveEarmarked;
+        // observed transmuter pre-balance -> potential cover
+        uint256 transmuterBal = TokenUtils.safeBalanceOf(yieldToken, address(transmuter));
+        uint256 deltaYield    = transmuterBal > lastTransmuterTokenBalance ? transmuterBal - lastTransmuterTokenBalance : 0;
+        uint256 coverDebt = convertYieldTokensToDebt(deltaYield);
+
+        // cap cover so we never consume beyond remaining earmarked
+        uint256 coverToApplyDebt = amount + coverDebt > liveEarmarked ? (liveEarmarked - amount) : coverDebt;
+
+        uint256 redeemedDebtTotal = amount + coverToApplyDebt;
+
+       // Apply redemption weights/decay to the full amount that left the earmarked bucket
+        if (liveEarmarked != 0 && redeemedDebtTotal != 0) {
+            uint256 survival = ((liveEarmarked - redeemedDebtTotal) << 128) / liveEarmarked;
             _survivalAccumulator = _mulQ128(_survivalAccumulator, survival);
+            _redemptionWeight += PositionDecay.WeightIncrement(redeemedDebtTotal, cumulativeEarmarked);
         }
 
-        // If amount is greater than cumulative earmarked it is due to rounding down the price of tokens held by the transmuter
-        // This underpricing leads to the transmuter requesting more tokens than the alchemist has earmarked in some cases
-        _redemptionWeight += PositionDecay.WeightIncrement(amount > cumulativeEarmarked ? cumulativeEarmarked : amount, cumulativeEarmarked);
+        // earmarks are reduced by the full redeemed amount (net + cover)
+        cumulativeEarmarked -= redeemedDebtTotal;
 
-        // Calculate current fee price
-        uint256 collRedeemed = convertDebtTokensToYield(amount);
-        uint256 feeCollateral = collRedeemed * protocolFee / BPS;
-        uint256 totalOut = collRedeemed + feeCollateral;
-
-        // Update weights and totals
-        uint256 old = _totalLocked;
-        _totalLocked = totalOut > old ? 0 : old - totalOut;
-        // Same rounding behavior as above
-        _collateralWeight += PositionDecay.WeightIncrement(totalOut > old ? old : totalOut, old);
-        cumulativeEarmarked -= amount;
-        totalDebt -= amount;
+        // global borrower debt falls by the full redeemed amount
+        totalDebt -= redeemedDebtTotal;
 
         lastRedemptionBlock = block.number;
+
+        // consume the observed cover so it can't be reused
+        if (deltaYield != 0) {
+            uint256 usedYield = convertDebtTokensToYield(coverToApplyDebt);
+            lastTransmuterTokenBalance = transmuterBal > usedYield ? transmuterBal - usedYield : transmuterBal;
+        }
+
+        // move only the net collateral + fee
+        uint256 collRedeemed  = convertDebtTokensToYield(amount);
+        uint256 feeCollateral = collRedeemed * protocolFee / BPS;
+        uint256 totalOut      = collRedeemed + feeCollateral;
+
+        // update locked collateral + collateral weight
+        uint256 old = _totalLocked;
+        _totalLocked = totalOut > old ? 0 : old - totalOut;
+        _collateralWeight += PositionDecay.WeightIncrement(totalOut > old ? old : totalOut, old);
 
         TokenUtils.safeTransfer(yieldToken, transmuter, collRedeemed);
         TokenUtils.safeTransfer(yieldToken, protocolFeeReceiver, feeCollateral);
         _yieldTokensDeposited -= collRedeemed + feeCollateral;
 
-        emit Redemption(amount);
+        emit Redemption(redeemedDebtTotal);
     }
 
     ///@inheritdoc IAlchemistV3Actions
@@ -930,6 +947,11 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         totalDebt -= amount;
         _totalLocked -= toFree;
         account.rawLocked = lockedCollateral - toFree;
+
+        // Clamp to avoid underflow due to rounding later at a later time
+        if (cumulativeEarmarked > totalDebt) {
+            cumulativeEarmarked = totalDebt;
+        }
     }
 
     /// @dev Set the mint allowance for `spender` to `amount` for the account owned by `tokenId`.
@@ -1031,10 +1053,8 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         uint256 redemptionSurvivalOld = PositionDecay.SurvivalFromWeight(account.lastAccruedRedemptionWeight);
         if (redemptionSurvivalOld == 0) redemptionSurvivalOld = ONE_Q128;
         uint256 redemptionSurvivalNew  = PositionDecay.SurvivalFromWeight(_redemptionWeight);
-
         // Survival during current sync window
         uint256 survivalRatio = _divQ128(redemptionSurvivalNew, redemptionSurvivalOld);
-
         // User exposure at last sync used to calculate newly earmarked debt pre redemption
         uint256 userExposure = account.debt > account.earmarked ? account.debt - account.earmarked : 0;
         uint256 earmarkRaw = PositionDecay.ScaleByWeightDelta(userExposure, _earmarkWeight - account.lastAccruedEarmarkWeight);
@@ -1056,7 +1076,6 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
 
         // Old earmarks that survived redemptions in the current sync window
         uint256 exposureSurvival = _mulQ128(account.earmarked, survivalRatio);
-
         // What was redeemed from the newly earmark between last sync and now
         uint256 redeemedFromEarmarked = earmarkRaw - earmarkedUnredeemed;
         // Total overall earmarked to adjust user debt
@@ -1091,6 +1110,8 @@ contract AlchemistV3 is IAlchemistV3, Initializable {
         // Proper saturating subtract in DEBT units
         uint256 coverInDebt = convertYieldTokensToDebt(transmuterDifference);
         amount = amount > coverInDebt ? amount - coverInDebt : 0;
+
+        lastTransmuterTokenBalance = transmuterCurrentBalance;
 
         uint256 liveUnearmarked = totalDebt - cumulativeEarmarked;
         if (amount > liveUnearmarked) amount = liveUnearmarked;

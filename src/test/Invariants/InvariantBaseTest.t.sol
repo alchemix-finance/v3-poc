@@ -36,7 +36,7 @@ contract InvariantBaseTest is InvariantsTest {
         _targetSender(makeAddr("Sender8"));
     }
 
-    function _deposit(uint256 tokenId, uint256 amount, address onBehalf) internal logCall("deposit") {
+    function _deposit(uint256 tokenId, uint256 amount, address onBehalf) internal logCall(onBehalf, "deposit") {
         fakeUnderlyingToken.mint(onBehalf, amount);
         vm.startPrank(onBehalf);
         fakeUnderlyingToken.approve(address(fakeYieldToken), amount);
@@ -46,17 +46,17 @@ contract InvariantBaseTest is InvariantsTest {
         vm.stopPrank();
     }
 
-    function _borrow(uint256 tokenId, uint256 amount, address onBehalf) internal logCall("borrow") {
+    function _borrow(uint256 tokenId, uint256 amount, address onBehalf) internal logCall(onBehalf, "borrow") {
         vm.prank(onBehalf);
         alchemist.mint(tokenId, amount, onBehalf);
     }
 
-    function _withdraw(uint256 tokenId, uint256 amount, address onBehalf) internal logCall("withdraw") {
+    function _withdraw(uint256 tokenId, uint256 amount, address onBehalf) internal logCall(onBehalf, "withdraw") {
         vm.prank(onBehalf);
         alchemist.withdraw(amount, onBehalf, tokenId);
     }
 
-    function _repay(uint256 tokenId, uint256 amount, address onBehalf) internal logCall("repay") {
+    function _repay(uint256 tokenId, uint256 amount, address onBehalf) internal logCall(onBehalf, "repay") {
         vm.roll(block.number + 1);
         fakeUnderlyingToken.mint(onBehalf, amount);
         vm.startPrank(onBehalf);
@@ -67,13 +67,12 @@ contract InvariantBaseTest is InvariantsTest {
         vm.stopPrank();
     }
 
-    function _burn(uint256 tokenId, uint256 amount, address onBehalf) internal logCall("burn") {
-        vm.roll(block.number + 1);
+    function _burn(uint256 tokenId, uint256 amount, address onBehalf) internal logCall(onBehalf, "burn") {
         vm.prank(onBehalf);
         alchemist.burn(amount, tokenId);
     }
 
-    function _stake(uint256 amount, address onBehalf) internal logCall("stake") {
+    function _stake(uint256 amount, address onBehalf) internal logCall(onBehalf, "stake") {
         vm.startPrank(onBehalf);
         alToken.mint(onBehalf, amount);
         alToken.approve(address(transmuterLogic), amount);
@@ -81,7 +80,7 @@ contract InvariantBaseTest is InvariantsTest {
         vm.stopPrank();
     }
 
-    function _claim(uint256 tokenId, address onBehalf) internal logCall("claim") {
+    function _claim(uint256 tokenId, address onBehalf) internal logCall(onBehalf, "claim") {
         vm.roll(block.number + 10);
         vm.startPrank(onBehalf);
         transmuterLogic.claimRedemption(tokenId);
@@ -156,13 +155,16 @@ contract InvariantBaseTest is InvariantsTest {
         address onBehalf = _randomBurner(targetSenders(), onBehalfSeed);
         if (onBehalf == address(0)) return;
 
+        // Roll before we check CDP so new earmark does not accumulate and cause illegal state after checking account
+        vm.roll(block.number + 1);
+
         uint256 tokenId = AlchemistNFTHelper.getFirstTokenId(onBehalf, address(alchemistNFT));
 
         (, uint256 debt, uint256 earmarked) = alchemist.getCDP(tokenId);
 
         uint256 burnable = (debt - earmarked) > (alchemist.totalSyntheticsIssued() - transmuterLogic.totalLocked()) 
         ? (alchemist.totalSyntheticsIssued() - transmuterLogic.totalLocked()) 
-        :  (alchemist.totalSyntheticsIssued() - transmuterLogic.totalLocked()) - (debt - earmarked);
+        : (debt - earmarked);
 
         amount = bound(amount, 0, burnable);
         if (amount == 0) return;
