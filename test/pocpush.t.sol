@@ -4,7 +4,7 @@ pragma solidity ^0.8.18;
 import "forge-std/Test.sol";
 import "../src/Transmuter.sol";
 import "../src/interfaces/ITransmuter.sol";
-import "../src/interfaces/IAlchemistV3.sol";
+// Nota: NO importamos IAlchemistV3 para el mock, pero sí respetamos las firmas que Transmuter invoca.
 
 /// ─────────────────────────────────────────────
 /// Mock minimal ERC20
@@ -57,9 +57,10 @@ contract MockERC20 {
 }
 
 /// ─────────────────────────────────────────────
-/// MockAlchemist — minimal implementación para Transmuter
+/// MockAlchemist: NO hereda la interfaz completa,
+/// pero define exactamente las funciones que Transmuter usa.
 /// ─────────────────────────────────────────────
-contract MockAlchemist is IAlchemistV3 {
+contract MockAlchemist {
     MockERC20 public yieldToken;
     MockERC20 public underlying;
     uint256 public syntheticsIssued;
@@ -70,43 +71,56 @@ contract MockAlchemist is IAlchemistV3 {
         syntheticsIssued = 1e30;
     }
 
-    function totalSyntheticsIssued() external view override returns (uint256) {
+    // === Firmas que Transmuter invoca (deben coincidir con IAlchemistV3) ===
+    function totalSyntheticsIssued() external view returns (uint256) {
         return syntheticsIssued;
     }
 
-    function getTotalUnderlyingValue() external view override returns (uint256) {
+    function myt() external view returns (address) {
+        return address(yieldToken);
+    }
+
+    function getTotalUnderlyingValue() external view returns (uint256) {
         return 1e30;
     }
 
-    function convertYieldTokensToUnderlying(uint256 amount) external view override returns (uint256) {
-        return amount;
+    function convertYieldTokensToUnderlying(uint256 amount) external view returns (uint256) {
+        return amount; // 1:1 para simplificar
     }
 
-    function redeem(uint256 amount) external override {
+    function convertYieldTokensToDebt(uint256 /*amount*/) external view returns (uint256) {
+        return 0; // sin deuda
+    }
+
+    function convertDebtTokensToYield(uint256 amount) external view returns (uint256) {
+        return amount; // 1:1
+    }
+
+    function redeem(uint256 amount) external {
+        // simular redeem minteando yield al caller
         yieldToken.mint(msg.sender, amount);
     }
 
-    function reduceSyntheticsIssued(uint256 amount) external override {
+    function reduceSyntheticsIssued(uint256 amount) external {
         if (syntheticsIssued >= amount) syntheticsIssued -= amount;
         else syntheticsIssued = 0;
     }
 
-    function setTransmuterTokenBalance(uint256) external override {}
-
-    function myt() external view override returns (address) {
-        return address(yieldToken);
+    function setTransmuterTokenBalance(uint256 /*bal*/) external {
+        // no-op
     }
 
-    function underlyingToken() external view override returns (address) {
+    function underlyingToken() external view returns (address) {
         return address(underlying);
     }
 
+    // fallback/receive por si el contrato bajo test llama algo extra
     fallback() external payable {}
     receive() external payable {}
 }
 
 /// ─────────────────────────────────────────────
-/// Test principal: demuestra el DoS / griefing
+/// Test: demuestra el DoS / griefing por depositCap
 /// ─────────────────────────────────────────────
 contract TransmuterGriefingTest is Test {
     Transmuter public transmuter;
@@ -125,22 +139,26 @@ contract TransmuterGriefingTest is Test {
         underlying = new MockERC20("Underlying", "UND");
         alchemist = new MockAlchemist(yieldToken, underlying);
 
-        ITransmuter.TransmuterInitializationParams memory params =
-            ITransmuter.TransmuterInitializationParams({
-                syntheticToken: address(synthetic),
-                timeToTransmute: 100,
-                transmutationFee: 50,
-                exitFee: 10,
-                feeReceiver: feeReceiver
-            });
+        // ⚠️ Inicializamos el struct campo a campo (no literal),
+        // así si tu ITransmuter.TransmuterInitializationParams tiene 6+ campos,
+        // los extra quedan en cero y compila igual.
+        ITransmuter.TransmuterInitializationParams memory params;
+        params.syntheticToken = address(synthetic);
+        params.timeToTransmute = 100;
+        params.transmutationFee = 50; // 0.5% (BPS=10000)
+        params.exitFee = 10;          // 0.1%
+        params.feeReceiver = feeReceiver;
+        // Si tu struct tuviera otros campos, se quedan en 0/defecto y el constructor no los usa.
 
         transmuter = new Transmuter(params);
         transmuter.setAlchemist(address(alchemist));
-        transmuter.setDepositCap(10e18);
+        transmuter.setDepositCap(10e18); // cupo chico para el test
 
+        // fondos
         synthetic.mint(attacker, 20e18);
         synthetic.mint(victim, 1e18);
 
+        // approvals
         vm.startPrank(attacker);
         synthetic.approve(address(transmuter), type(uint256).max);
         vm.stopPrank();
@@ -169,9 +187,11 @@ contract TransmuterGriefingTest is Test {
         vm.prank(attacker);
         transmuter.createRedemption(fill);
 
+        // claim no puede ser en el mismo bloque que la creación
         vm.roll(block.number + 1);
 
         vm.prank(attacker);
+        // primer NFT id = 1 (nonce arranca en 0 y se ++ en create)
         transmuter.claimRedemption(1);
 
         assertEq(transmuter.totalLocked(), 0);
