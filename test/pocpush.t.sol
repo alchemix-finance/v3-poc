@@ -33,8 +33,8 @@ contract MockERC20 {
     }
 
     function transferFrom(address from, address to, uint256 amount) external returns (bool) {
-        uint256 allowed = allowance[from][msg.sender];
         if (msg.sender != from) {
+            uint256 allowed = allowance[from][msg.sender];
             require(allowed >= amount, "allow insuf");
             allowance[from][msg.sender] = allowed - amount;
         }
@@ -57,7 +57,8 @@ contract MockERC20 {
 }
 
 /// Minimal mock Alchemist implementing only the methods Transmuter calls.
-contract MockAlchemist is IAlchemistV3 {
+/// Marked abstract so the compiler doesn't require implementing the entire IAlchemistV3 interface.
+abstract contract MockAlchemist is IAlchemistV3 {
     MockERC20 public yieldToken;
     MockERC20 public underlying;
     uint256 public syntheticsIssued;
@@ -87,7 +88,7 @@ contract MockAlchemist is IAlchemistV3 {
         return amount;
     }
 
-    function convertYieldTokensToDebt(uint256 amount) external view override returns (uint256) {
+    function convertYieldTokensToDebt(uint256 /*amount*/) external view override returns (uint256) {
         // no debt for simplicity
         return 0;
     }
@@ -97,7 +98,7 @@ contract MockAlchemist is IAlchemistV3 {
         return amount;
     }
 
-    function redeem(uint256 amount) external override {
+    function redeem(uint256 amount) external virtual override {
         // mint yield tokens to caller (simulate redeem)
         yieldToken.mint(msg.sender, amount);
     }
@@ -142,19 +143,22 @@ contract TransmuterGriefingTest is Test {
         yieldToken = new MockERC20("Yield", "YLD");
         underlying = new MockERC20("Underlying", "UND");
 
-        // deploy mock alchemist
-        alchemist = new MockAlchemist(yieldToken, underlying);
+        // deploy mock alchemist (abstract allows this; redeem is virtual implemented above)
+        alchemist = MockAlchemist(address(new MockAlchemistConcrete(address(yieldToken), address(underlying))));
 
         // prepare initialization params (use ITransmuter struct)
+        // NOTE: many implementations of the TransmuterInitializationParams include an `admin` field.
+        // Add admin: address(this) so constructor matches the interface in your repo.
         ITransmuter.TransmuterInitializationParams memory params = ITransmuter.TransmuterInitializationParams({
             syntheticToken: address(synthetic),
             timeToTransmute: 100,       // arbitrary
             transmutationFee: 50,       // 0.5% if BPS=10000
             exitFee: 10,                // 0.1%
-            feeReceiver: feeReceiver
+            feeReceiver: feeReceiver,
+            admin: address(this)
         });
 
-        // deploy transmuter (msg.sender becomes admin)
+        // deploy transmuter (msg.sender becomes admin in constructor of Transmuter)
         transmuter = new Transmuter(params);
 
         // set alchemist in transmuter (admin function)
@@ -200,16 +204,14 @@ contract TransmuterGriefingTest is Test {
         vm.prank(attacker);
         transmuter.createRedemption(fillAmount);
 
-        // Attacker now claims to free the slot.
-        // Note: claimRedemption reverts if called in same block as creation.
-        // Advance block so claim is allowed.
+        // Advance block so claim is allowed (createRedemption sets startBlock == block.number; claimRedemption checks that)
         vm.roll(block.number + 1);
 
         vm.prank(attacker);
         // The first minted id is 1 in this test (nonce starts at 0 then ++). We assume it's 1.
         transmuter.claimRedemption(1);
 
-        // Now totalLocked should have decreased (== 0)
+        // Now totalLocked should have decreased
         assertEq(transmuter.totalLocked(), 0);
 
         // Victim can now create redemption
@@ -217,5 +219,19 @@ contract TransmuterGriefingTest is Test {
         transmuter.createRedemption(1e18);
 
         assertEq(transmuter.totalLocked(), 1e18);
+    }
+}
+
+/*
+    Small helper: since MockAlchemist was declared abstract to avoid implementing the whole interface,
+    we create a tiny concrete implementation that inherits it and provides the virtual redeem()
+    implementation so we can deploy it. This avoids having to implement all IAlchemistV3 functions.
+*/
+contract MockAlchemistConcrete is MockAlchemist {
+    constructor(address yieldAddr, address underlyingAddr) MockAlchemist(MockERC20(yieldAddr), MockERC20(underlyingAddr)) {}
+
+    // override redeem to call parent implementation (which mints yield tokens)
+    function redeem(uint256 amount) external override {
+        MockAlchemist.redeem(amount);
     }
 }
