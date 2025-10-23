@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - master
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      cache-hit: ${{ steps.cache.outputs.cache-hit }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache lib folder
+        id: cache
+        uses: actions/cache@v3
+        with:
+          path: lib
+          key: ${{ runner.os }}-lib-${{ hashFiles('**/foundry.toml') }}
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Install dependencies (only if cache miss)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          forge install foundry-rs/forge-std
+          forge install OpenZeppelin/openzeppelin-foundry-upgrades
+          forge install OpenZeppelin/openzeppelin-contracts-upgradeable
+          forge install OpenZeppelin/openzeppelin-contracts
+        env:
+          FOUNDRY_PROFILE: default
+
+  build:
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v3
+        with:
+          path: lib
+          key: ${{ runner.os }}-lib-${{ hashFiles('**/foundry.toml') }}
+
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Build with viaIR
+        run: forge build
+        env:
+          FOUNDRY_PROFILE: default
+
+  test:
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v3
+        with:
+          path: lib
+          key: ${{ runner.os }}-lib-${{ hashFiles('**/foundry.toml') }}
+
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Run tests
+        run: forge test -vvv
+        env:
+          FOUNDRY_PROFILE: default
+
+  fmt:
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v3
+        with:
+          path: lib
+          key: ${{ runner.os }}-lib-${{ hashFiles('**/foundry.toml') }}
+
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Check formatting
+        run: forge fmt --check
+        env:
+          FOUNDRY_PROFILE: default
