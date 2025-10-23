@@ -2,12 +2,13 @@
 pragma solidity ^0.8.18;
 
 import "forge-std/Test.sol";
-
 import "../src/Transmuter.sol";
 import "../src/interfaces/ITransmuter.sol";
 import "../src/interfaces/IAlchemistV3.sol";
 
-/// Minimal mock ERC20 used for synthetic token & yield token
+/// ─────────────────────────────────────────────
+/// Mock minimal ERC20
+/// ─────────────────────────────────────────────
 contract MockERC20 {
     string public name;
     string public symbol;
@@ -49,16 +50,16 @@ contract MockERC20 {
         return true;
     }
 
-    /// burn used by Transmuter via TokenUtils.safeBurn (we expose a simple burn)
     function burn(uint256 amount) external {
         require(balanceOf[msg.sender] >= amount, "burn insuf");
         balanceOf[msg.sender] -= amount;
     }
 }
 
-/// Minimal mock Alchemist implementing only the methods Transmuter calls.
-/// Marked abstract so the compiler doesn't require implementing the entire IAlchemistV3 interface.
-abstract contract MockAlchemist is IAlchemistV3 {
+/// ─────────────────────────────────────────────
+/// MockAlchemist — minimal implementación para Transmuter
+/// ─────────────────────────────────────────────
+contract MockAlchemist is IAlchemistV3 {
     MockERC20 public yieldToken;
     MockERC20 public underlying;
     uint256 public syntheticsIssued;
@@ -66,66 +67,47 @@ abstract contract MockAlchemist is IAlchemistV3 {
     constructor(MockERC20 _yield, MockERC20 _underlying) {
         yieldToken = _yield;
         underlying = _underlying;
-        syntheticsIssued = 1e30; // large by default
+        syntheticsIssued = 1e30;
     }
 
-    // ---- Functions used by Transmuter ----
     function totalSyntheticsIssued() external view override returns (uint256) {
         return syntheticsIssued;
     }
 
-    function myt() external view override returns (address) {
-        return address(yieldToken);
-    }
-
     function getTotalUnderlyingValue() external view override returns (uint256) {
-        // pretend there's a lot of underlying
         return 1e30;
     }
 
     function convertYieldTokensToUnderlying(uint256 amount) external view override returns (uint256) {
-        // 1:1 for test simplicity
         return amount;
     }
 
-    function convertYieldTokensToDebt(uint256 /*amount*/) external view override returns (uint256) {
-        // no debt for simplicity
-        return 0;
-    }
-
-    function convertDebtTokensToYield(uint256 amount) external view override returns (uint256) {
-        // 1:1
-        return amount;
-    }
-
-    function redeem(uint256 amount) external virtual override {
-        // mint yield tokens to caller (simulate redeem)
+    function redeem(uint256 amount) external override {
         yieldToken.mint(msg.sender, amount);
     }
 
     function reduceSyntheticsIssued(uint256 amount) external override {
-        // reduce tracked synthetics; guard underflow
         if (syntheticsIssued >= amount) syntheticsIssued -= amount;
         else syntheticsIssued = 0;
     }
 
-    function setTransmuterTokenBalance(uint256) external override {
-        // no-op for mock
+    function setTransmuterTokenBalance(uint256) external override {}
+
+    function myt() external view override returns (address) {
+        return address(yieldToken);
     }
 
     function underlyingToken() external view override returns (address) {
         return address(underlying);
     }
 
-    // fallback to avoid unexpected interface mismatches during tests
-    fallback() external payable {
-        revert("unexpected call");
-    }
-
+    fallback() external payable {}
     receive() external payable {}
 }
 
-/// Test contract demonstrating griefing
+/// ─────────────────────────────────────────────
+/// Test principal: demuestra el DoS / griefing
+/// ─────────────────────────────────────────────
 contract TransmuterGriefingTest is Test {
     Transmuter public transmuter;
     MockERC20 public synthetic;
@@ -138,100 +120,65 @@ contract TransmuterGriefingTest is Test {
     address public feeReceiver = address(0xFEE);
 
     function setUp() public {
-        // deploy mocks
         synthetic = new MockERC20("Synth", "SYN");
         yieldToken = new MockERC20("Yield", "YLD");
         underlying = new MockERC20("Underlying", "UND");
+        alchemist = new MockAlchemist(yieldToken, underlying);
 
-        // deploy mock alchemist (abstract allows this; redeem is virtual implemented above)
-        alchemist = MockAlchemist(address(new MockAlchemistConcrete(address(yieldToken), address(underlying))));
+        ITransmuter.TransmuterInitializationParams memory params =
+            ITransmuter.TransmuterInitializationParams({
+                syntheticToken: address(synthetic),
+                timeToTransmute: 100,
+                transmutationFee: 50,
+                exitFee: 10,
+                feeReceiver: feeReceiver
+            });
 
-        // prepare initialization params (use ITransmuter struct)
-        // NOTE: many implementations of the TransmuterInitializationParams include an `admin` field.
-        // Add admin: address(this) so constructor matches the interface in your repo.
-        ITransmuter.TransmuterInitializationParams memory params = ITransmuter.TransmuterInitializationParams({
-            syntheticToken: address(synthetic),
-            timeToTransmute: 100,       // arbitrary
-            transmutationFee: 50,       // 0.5% if BPS=10000
-            exitFee: 10,                // 0.1%
-            feeReceiver: feeReceiver,
-            admin: address(this)
-        });
-
-        // deploy transmuter (msg.sender becomes admin in constructor of Transmuter)
         transmuter = new Transmuter(params);
-
-        // set alchemist in transmuter (admin function)
         transmuter.setAlchemist(address(alchemist));
+        transmuter.setDepositCap(10e18);
 
-        // set deposit cap modest for test clarity
-        transmuter.setDepositCap(1e18 * 10); // 10 synth
+        synthetic.mint(attacker, 20e18);
+        synthetic.mint(victim, 1e18);
 
-        // fund attacker and victim with synthetic tokens
-        synthetic.mint(attacker, 1e18 * 20); // 20 synth
-        synthetic.mint(victim, 1e18 * 1);    // 1 synth
-
-        // victim approves transmuter
-        vm.prank(victim);
+        vm.startPrank(attacker);
         synthetic.approve(address(transmuter), type(uint256).max);
+        vm.stopPrank();
 
-        // attacker approves transmuter
-        vm.prank(attacker);
+        vm.startPrank(victim);
         synthetic.approve(address(transmuter), type(uint256).max);
+        vm.stopPrank();
     }
 
-    /// Attacker fills the deposit cap, victim is blocked (revert)
+    /// El atacante llena el cupo y bloquea a otros usuarios
     function test_griefing_blocks_victim() public {
-        // Attacker fills the cap with a single createRedemption
-        uint256 fillAmount = transmuter.depositCap() - transmuter.totalLocked();
+        uint256 fill = transmuter.depositCap() - transmuter.totalLocked();
         vm.prank(attacker);
-        transmuter.createRedemption(fillAmount);
+        transmuter.createRedemption(fill);
 
-        // Sanity: totalLocked equals depositCap now
         assertEq(transmuter.totalLocked(), transmuter.depositCap());
 
-        // Victim tries to create a redemption and should revert with DepositCapReached()
         vm.prank(victim);
-        // selector for custom error DepositCapReached() -> bytes4(keccak256("DepositCapReached()"))
         vm.expectRevert(abi.encodePacked(bytes4(keccak256("DepositCapReached()"))));
         transmuter.createRedemption(1e18);
     }
 
-    /// If attacker claims (frees the cap), victim can then create redemption successfully
-    function test_after_attacker_claim_victim_can_create() public {
-        // Attacker fills the cap
-        uint256 fillAmount = transmuter.depositCap() - transmuter.totalLocked();
+    /// Si el atacante reclama, se libera el cupo
+    function test_attacker_claim_allows_victim() public {
+        uint256 fill = transmuter.depositCap() - transmuter.totalLocked();
         vm.prank(attacker);
-        transmuter.createRedemption(fillAmount);
+        transmuter.createRedemption(fill);
 
-        // Advance block so claim is allowed (createRedemption sets startBlock == block.number; claimRedemption checks that)
         vm.roll(block.number + 1);
 
         vm.prank(attacker);
-        // The first minted id is 1 in this test (nonce starts at 0 then ++). We assume it's 1.
         transmuter.claimRedemption(1);
 
-        // Now totalLocked should have decreased
         assertEq(transmuter.totalLocked(), 0);
 
-        // Victim can now create redemption
         vm.prank(victim);
         transmuter.createRedemption(1e18);
 
         assertEq(transmuter.totalLocked(), 1e18);
-    }
-}
-
-/*
-    Small helper: since MockAlchemist was declared abstract to avoid implementing the whole interface,
-    we create a tiny concrete implementation that inherits it and provides the virtual redeem()
-    implementation so we can deploy it. This avoids having to implement all IAlchemistV3 functions.
-*/
-contract MockAlchemistConcrete is MockAlchemist {
-    constructor(address yieldAddr, address underlyingAddr) MockAlchemist(MockERC20(yieldAddr), MockERC20(underlyingAddr)) {}
-
-    // override redeem to call parent implementation (which mints yield tokens)
-    function redeem(uint256 amount) external override {
-        MockAlchemist.redeem(amount);
     }
 }
