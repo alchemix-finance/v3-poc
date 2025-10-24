@@ -28,7 +28,8 @@ contract AlchemistCurator is IAlchemistCurator, PermissionedProxy {
         pendingAdmin = _newAdmin;
     }
 
-    function acceptAdminOwnership() external onlyAdmin {
+    function acceptAdminOwnership() external {
+        require(msg.sender == pendingAdmin, "PD");
         admin = pendingAdmin;
         pendingAdmin = address(0);
         emit AdminChanged(admin);

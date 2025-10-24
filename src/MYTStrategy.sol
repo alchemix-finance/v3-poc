@@ -151,7 +151,7 @@ contract MYTStrategy is IMYTStrategy, Ownable {
     /// protocol of this strategy
     function claimRewards() public virtual returns (uint256) {
         require(!killSwitch, "emergency");
-        _claimRewards();
+        return _claimRewards();
     }
 
     /// @dev override this function to handle wrapping/allocation/moving funds to
