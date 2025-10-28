@@ -27,4 +27,5 @@ interface IAlchemistCurator {
     event SubmitDecreaseRelativeCap(address indexed strategy, uint256 amount, bytes indexed id);
     event StrategySet(address indexed strategy, address indexed myt);
     event SubmitSetStrategy(address indexed strategy, address indexed myt);
+    event SubmitSetAllocator(address indexed allocator, bool indexed value);
 }

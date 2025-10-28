@@ -159,6 +159,12 @@ contract AlchemistCurator is IAlchemistCurator, PermissionedProxy {
         emit SubmitIncreaseRelativeCap(adapter, amount, id);
     }
 
+    function submitSetAllocator(address myt, address allocator, bool v) external {
+        bytes memory data = abi.encodeCall(IVaultV2.setIsAllocator, (allocator, v));
+        IVaultV2(myt).submit(data);
+        emit SubmitSetAllocator(allocator, v);
+    }
+
     function _vaultSubmit(address adapter, bytes memory data) internal {
         IVaultV2 vault = _vault(adapter);
         vault.submit(data);

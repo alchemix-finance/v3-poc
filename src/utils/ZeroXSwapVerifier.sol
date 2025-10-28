@@ -27,7 +27,7 @@ library ZeroXSwapVerifier {
     bytes4 private constant METATXN_VIP = 0xc1fb425e;
     bytes4 private constant CURVE_TRICRYPTO_VIP = 0x103b48be;
     bytes4 private constant UNISWAPV4_VIP = 0x38c9c147;
-    bytes4 private constant TRANSFER_FROM = 0x8d68a156;
+    bytes4 private constant TRANSFER_FROM = 0xc1fb425e;
     bytes4 private constant NATIVE_DEPOSIT = 0xc876d21d;
     bytes4 private constant SELL_TO_LIQUIDITY_PROVIDER = 0xf1e0a1c3;
     bytes4 private constant DODOV1_VIP = 0x40a07c6c;

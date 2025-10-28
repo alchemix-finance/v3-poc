@@ -62,7 +62,8 @@ contract DeployV3Script is Script {
     AlchemistAllocator public allocator;
 
     // Strategy-specific addresses
-    address public aavePool = MOCK_ADDRESS; // TODO
+    // TODO double-check!
+    address public aavePool = 0x794a61358D6845594F94dc1DB02A252b5b4814aD;
     address public velodromeRouter = 0xa062aE8A9c5e11aaA026fc2670B0D65cCc8B2858;
     address public velodromeFactory = 0xF1046053aa5682b4F9a81b5481394DA16BE5FF5a;
     address public usdt0OP = 0x01bFF41798a0BcF287b996046Ca68b395DbC1071;
@@ -70,8 +71,8 @@ contract DeployV3Script is Script {
     address public moonwellMUSDC = 0x8E08617b0d66359D73Aa11E11017834C29155525;
     address public moonwellMWETH = 0xb4104C02BBf4E9be85AAa41a62974E4e28D59A33;
     address public wstETHOP = 0x1F32b1c2345538c0c6f582fCB022739c4A194Ebb;
-    address public velodromePool = MOCK_ADDRESS;
-    address public stargatePool = MOCK_ADDRESS;
+    address public velodromePool = 0xbF30Ff33CF9C6b0c48702Ff17891293b002DfeA4;
+    address public stargatePool = 0xe8CDF27AcD73a434D661C84887215F7598e7d0d3;
 
     // Strategy parameters
     IMYTStrategy.StrategyParams public aaveUSDCParams = IMYTStrategy.StrategyParams({
@@ -326,7 +327,6 @@ contract DeployV3Script is Script {
 
         // Set vault curator immediately so submit calls work
         vault.setCurator(address(curator));
-        vault.setOwner(newOwner);
 
         // Deploy AlchemistAllocator
         allocator = new AlchemistAllocator(address(vault), newOwner, vaultAdmin);
@@ -377,10 +377,8 @@ contract DeployV3Script is Script {
         deployStrategies(address(vault));
 
         // Set allocator on vault
-        vault.setIsAllocator(address(allocator), true);
-
-        // Configure timelock for submit function (0 timelock for immediate execution)
-        vault.increaseTimelock(IVaultV2.submit.selector, 0);
+        curator.submitSetAllocator(address(vault), address(allocator), true);
+        vault.setOwner(newOwner);
 
         // Transfer curator ownership after all strategy operations are complete
         curator.transferAdminOwnerShip(newOwner);

