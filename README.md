@@ -62,7 +62,7 @@ This repo includes the following pre-commit hooks that are defined in the `.pre-
 
 ## Actions
 
-Scripts for [GitHub Actions](https://docs.github.com/en/actions) is included in `.github/workflows/`. `test.yaml` is run on any PR, and runs all forge tests, inspects coverage, and runs [Slither](https://github.com/crytic/slither). There is also a script barring PRs to main from anywhere other than the staging branch, and another running the pre-commit hooks before a PR.
+Scripts for [GitHub Actions](https://docs.github.com/en/actions) are included in `.github/workflows/`. `test.yaml` is run on any PR, and runs all forge tests, inspects coverage, and runs [Slither](https://github.com/crytic/slither). There is also a script barring PRs to main from anywhere other than the staging branch, and another running the pre-commit hooks before a PR.
 
 ## Audits
 
